@@ -8,15 +8,12 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // Configure CORS for production and development
-  const frontendUrl = process.env.FRONTEND_URL;
   const allowedOrigins = [
-    frontendUrl,
     'https://sdesk-frontend.vercel.app',
     'http://localhost:3000',
   ];
 
   console.log('🔧 CORS Configuration:');
-  console.log('📍 Frontend URL:', frontendUrl);
   console.log('🌍 Environment:', process.env.NODE_ENV);
   console.log('🔗 Allowed Origins:', allowedOrigins);
 
@@ -44,17 +41,13 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      // Allow requests with no origin (like mobile apps or curl)
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
+        return callback(null, true);
       }
-      callback(new Error('Not allowed by CORS'));
+      return callback(new Error('Not allowed by CORS'));
     },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
       'Origin',
@@ -65,9 +58,8 @@ async function bootstrap() {
       'Cookie',
     ],
     exposedHeaders: ['Set-Cookie'],
-    credentials: true,
     preflightContinue: false,
-    optionsSuccessStatus: 200, // Changed from 204 to 200 for better compatibility
+    optionsSuccessStatus: 200,
   });
   const port = process.env.PORT || 8000;
   await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
