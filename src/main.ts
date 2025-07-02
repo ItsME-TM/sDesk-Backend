@@ -8,17 +8,18 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // Configure CORS for production and development
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const frontendUrl = process.env.FRONTEND_URL;
+  const allowedOrigins = [
+    frontendUrl,
+    'https://sdesk-frontend.vercel.app',
+    'http://localhost:3000',
+  ];
 
   console.log('🔧 CORS Configuration:');
   console.log('📍 Frontend URL:', frontendUrl);
   console.log('🌍 Environment:', process.env.NODE_ENV);
-  console.log('🔗 Allowed Origins:', [
-    frontendUrl,
-    'https://sdesk-frontend.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001',
-  ]);
+  console.log('🔗 Allowed Origins:', allowedOrigins);
+
   // Add request logging middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(
@@ -37,13 +38,23 @@ async function bootstrap() {
 
     next();
   });
+  // More robust CORS configuration
   app.enableCors({
-    origin: [
-      frontendUrl,
-      'https://sdesk-frontend.vercel.app',
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ],
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
       'Origin',
@@ -52,18 +63,17 @@ async function bootstrap() {
       'Accept',
       'Authorization',
       'Cookie',
-      'Set-Cookie',
-      'Access-Control-Allow-Credentials',
     ],
     exposedHeaders: ['Set-Cookie'],
     credentials: true,
-    preflightContinue: false, // Changed to false for proper handling of preflight requests
-    optionsSuccessStatus: 204, // Some legacy browsers choke on 204
+    preflightContinue: false,
+    optionsSuccessStatus: 200, // Changed from 204 to 200 for better compatibility
   });
-
   const port = process.env.PORT || 8000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
   console.log(`Application is running on: ${await app.getUrl()}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`CORS Configuration is active`);
 }
 
 void bootstrap();
