@@ -32,13 +32,14 @@ export class AuthController {
           body.code,
           body.state,
           body.redirect_uri,
-        );      console.log('[AuthController] Microsoft login successful:', user);
+        );
+      console.log('[AuthController] Microsoft login successful:', user);
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
-      
+
       // Always use 'none' for sameSite when using Vercel with Heroku
       // This allows cookies to be sent in cross-origin requests
-      
+
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
@@ -72,7 +73,8 @@ export class AuthController {
       const refreshToken = req.cookies?.refreshToken;
       if (refreshToken) {
         this.authService.revokeRefreshToken(refreshToken as string);
-      }      res.clearCookie('refreshToken', {
+      }
+      res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
@@ -97,7 +99,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ success: boolean; accessToken?: string; message?: string }> {
     try {
-      const refreshToken = req.cookies?.refreshToken;      if (!refreshToken) {
+      const refreshToken = req.cookies?.refreshToken;
+      if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
           secure: true, // Always use secure cookies with sameSite=none
@@ -109,7 +112,8 @@ export class AuthController {
       }
       const accessToken = await this.authService.refreshJwtToken(
         refreshToken as string,
-      );      res.cookie('jwt', accessToken, {
+      );
+      res.cookie('jwt', accessToken, {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
@@ -118,7 +122,8 @@ export class AuthController {
       });
       console.log('[AuthController] New access token generated:', accessToken);
       return { success: true };
-    } catch (error) {      res.clearCookie('jwt', {
+    } catch (error) {
+      res.clearCookie('jwt', {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
