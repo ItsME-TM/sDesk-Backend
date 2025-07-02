@@ -160,17 +160,38 @@ export class AuthController {
           '[AuthController] Fetching admin details for service number:',
           payload.serviceNum,
         );
-        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
-          payload.serviceNum,
-        );
-        if (admin) {
-          console.log('Admin details:', admin);
-          // Add role: 'admin' to the response object
-          return { success: true, user: { ...admin, role: 'admin' } };
-        } else {
+        try {
+          const admin =
+            await this.teamAdminService.findTeamAdminByServiceNumber(
+              payload.serviceNum,
+            );
+          if (admin) {
+            console.log('Admin details:', admin);
+            // Add role: 'admin' to the response object
+            return { success: true, user: { ...admin, role: 'admin' } };
+          } else {
+            console.log(
+              `[AuthController] No admin found for service number: ${payload.serviceNum}`,
+            );
+            // For admin role, return basic user info if admin record not found
+            return {
+              success: true,
+              user: {
+                name: payload.name,
+                email: payload.email,
+                serviceNum: payload.serviceNum,
+                role: 'admin',
+              },
+            };
+          }
+        } catch (adminError) {
+          console.error(
+            '[AuthController] Error fetching admin details:',
+            adminError,
+          );
           return {
             success: false,
-            message: 'Admin not found for this service number',
+            message: 'Error fetching admin details',
           };
         }
       } else if (payload.role === 'technician' && payload.serviceNum) {
