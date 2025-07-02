@@ -36,17 +36,19 @@ export class AuthController {
       console.log('[AuthController] Microsoft login successful:', user);
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
-
+      
+      const isProduction = process.env.NODE_ENV === 'production';
+      
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: false, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: isProduction, // HTTPS required in production
+        sameSite: isProduction ? 'none' : 'strict', // Allow cross-origin in production
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: false, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: isProduction, // HTTPS required in production
+        sameSite: isProduction ? 'none' : 'strict', // Allow cross-origin in production
         maxAge: 60 * 60 * 1000,
       });
       return { success: true, user, accessToken };
