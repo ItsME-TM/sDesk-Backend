@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
+  
   // Configure CORS for production and development
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
@@ -18,6 +19,8 @@ async function bootstrap() {
   console.log('🔧 CORS Configuration:');
   console.log('🌍 Environment:', process.env.NODE_ENV);
   console.log('🔗 Allowed Origins:', allowedOrigins);
+  console.log('📝 Note: Using permissive CORS for debugging');
+  
   // Add request logging middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(
@@ -32,28 +35,13 @@ async function bootstrap() {
           req.headers['access-control-request-headers'],
         origin: req.headers.origin,
       });
-
-      // Manually handle preflight for critical routes
-      res.header('Access-Control-Allow-Origin', req.headers.origin);
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header(
-        'Access-Control-Allow-Methods',
-        'GET,POST,PUT,DELETE,OPTIONS,PATCH',
-      );
-      res.header(
-        'Access-Control-Allow-Headers',
-        'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cookie,Cache-Control,Pragma',
-      );
-      res.status(204).send();
-      return;
     }
 
     next();
   });
-
-  // More robust CORS configuration
+    // More robust CORS configuration
   app.enableCors({
-    origin: allowedOrigins,
+    origin: true, // Temporarily allow all origins for debugging
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
