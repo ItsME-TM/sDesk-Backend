@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
+import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,15 +10,51 @@ async function bootstrap() {
   // Configure CORS for production and development
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+  console.log('🔧 CORS Configuration:');
+  console.log('📍 Frontend URL:', frontendUrl);
+  console.log('🌍 Environment:', process.env.NODE_ENV);
+  console.log('🔗 Allowed Origins:', [
+    frontendUrl,
+    'https://sdesk-frontend.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ]);
+  // Add request logging middleware
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log(
+      `🌐 ${req.method} ${req.url} from origin: ${req.headers.origin || 'no-origin'}`,
+    );
+
+    if (req.method === 'OPTIONS') {
+      console.log('🔍 CORS Preflight Headers:', {
+        'access-control-request-method':
+          req.headers['access-control-request-method'],
+        'access-control-request-headers':
+          req.headers['access-control-request-headers'],
+        origin: req.headers.origin,
+      });
+    }
+
+    next();
+  });
+
   app.enableCors({
-    origin: [
-      frontendUrl,
-      'https://sdesk-frontend.vercel.app',
-      'http://localhost:3000',
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cookie',
+      'Set-Cookie',
+      'Access-Control-Allow-Credentials',
     ],
-    methods: 'GET,POST,PUT,DELETE,OPTIONS,PATCH',
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
-    credentials: true, // <-- This is required for cookies/auth
+    exposedHeaders: ['Set-Cookie'],
+    credentials: true,
+    preflightContinue: true,
+    optionsSuccessStatus: 204, // Some legacy browsers choke on 204
   });
 
   const port = process.env.PORT || 8000;

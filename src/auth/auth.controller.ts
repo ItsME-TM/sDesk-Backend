@@ -1,4 +1,13 @@
-import { Controller, Post, Body, Res, Req, Get, Headers } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  Req,
+  Get,
+  Headers,
+  Options,
+} from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
@@ -207,5 +216,25 @@ export class AuthController {
       console.error('[AuthController] Get logged user error:', error);
       return { success: false, message: 'Token verification failed' };
     }
+  }
+
+  @Options('/*')
+  handleOptions() {
+    // Handle CORS preflight requests
+    return { success: true };
+  }
+  @Options('login')
+  handleLoginOptions(@Res() res: Response): void {
+    res.header(
+      'Access-Control-Allow-Origin',
+      'https://sdesk-frontend.vercel.app',
+    );
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie',
+    );
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(204).send();
   }
 }
