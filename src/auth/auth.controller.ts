@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Res,
-  Req,
-  Get,
-  Headers,
-} from '@nestjs/common';
+import { Controller, Post, Body, Res, Req, Get, Headers } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
