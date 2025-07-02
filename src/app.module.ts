@@ -45,6 +45,7 @@ dotenv.config();
         Location,
       ],
       synchronize: true,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     IncidentModule,
     TeamAdminModule,
