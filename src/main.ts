@@ -6,17 +6,18 @@ import { Request, Response, NextFunction } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
-
   // Configure CORS for production and development
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
     'http://localhost:3000',
+    'http://localhost:5173', // Vite dev server
+    'https://localhost:3000',
+    'https://localhost:5173',
   ];
 
   console.log('🔧 CORS Configuration:');
   console.log('🌍 Environment:', process.env.NODE_ENV);
   console.log('🔗 Allowed Origins:', allowedOrigins);
-
   // Add request logging middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(
@@ -31,22 +32,28 @@ async function bootstrap() {
           req.headers['access-control-request-headers'],
         origin: req.headers.origin,
       });
+
+      // Manually handle preflight for critical routes
+      res.header('Access-Control-Allow-Origin', req.headers.origin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header(
+        'Access-Control-Allow-Methods',
+        'GET,POST,PUT,DELETE,OPTIONS,PATCH',
+      );
+      res.header(
+        'Access-Control-Allow-Headers',
+        'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cookie,Cache-Control,Pragma',
+      );
+      res.status(204).send();
+      return;
     }
 
     next();
   });
+
   // More robust CORS configuration
   app.enableCors({
-    origin: (
-      origin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void,
-    ) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS'));
-    },
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
@@ -56,10 +63,12 @@ async function bootstrap() {
       'Accept',
       'Authorization',
       'Cookie',
+      'Cache-Control',
+      'Pragma',
     ],
     exposedHeaders: ['Set-Cookie'],
     preflightContinue: false,
-    optionsSuccessStatus: 200,
+    optionsSuccessStatus: 204,
   });
   const port = process.env.PORT || 8000;
   await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
