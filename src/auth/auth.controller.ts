@@ -32,13 +32,14 @@ export class AuthController {
           body.code,
           body.state,
           body.redirect_uri,
-        );      console.log('[AuthController] Microsoft login successful:', user);
+        );
+      console.log('[AuthController] Microsoft login successful:', user);
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
-      
+
       // Always use 'none' for sameSite when using Vercel with Heroku
       // This allows cookies to be sent in cross-origin requests
-      
+
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
@@ -72,7 +73,8 @@ export class AuthController {
       const refreshToken = req.cookies?.refreshToken;
       if (refreshToken) {
         this.authService.revokeRefreshToken(refreshToken as string);
-      }      res.clearCookie('refreshToken', {
+      }
+      res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
@@ -97,7 +99,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ success: boolean; accessToken?: string; message?: string }> {
     try {
-      const refreshToken = req.cookies?.refreshToken;      if (!refreshToken) {
+      const refreshToken = req.cookies?.refreshToken;
+      if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
           secure: true, // Always use secure cookies with sameSite=none
@@ -109,7 +112,8 @@ export class AuthController {
       }
       const accessToken = await this.authService.refreshJwtToken(
         refreshToken as string,
-      );      res.cookie('jwt', accessToken, {
+      );
+      res.cookie('jwt', accessToken, {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
@@ -118,7 +122,8 @@ export class AuthController {
       });
       console.log('[AuthController] New access token generated:', accessToken);
       return { success: true };
-    } catch (error) {      res.clearCookie('jwt', {
+    } catch (error) {
+      res.clearCookie('jwt', {
         httpOnly: true,
         secure: true, // Always use secure cookies with sameSite=none
         sameSite: 'none', // Required for cross-origin cookies
@@ -160,108 +165,38 @@ export class AuthController {
           '[AuthController] Fetching admin details for service number:',
           payload.serviceNum,
         );
-        try {
-          const admin =
-            await this.teamAdminService.findTeamAdminByServiceNumber(
-              payload.serviceNum,
-            );
-          if (admin) {
-            console.log('Admin details:', admin);
-            // Add role: 'admin' to the response object
-            return { success: true, user: { ...admin, role: 'admin' } };
-          } else {
-            console.log(
-              `[AuthController] No admin found for service number: ${payload.serviceNum}`,
-            );
-            // For admin role, return basic user info if admin record not found
-            return {
-              success: true,
-              user: {
-                name: payload.name,
-                email: payload.email,
-                serviceNum: payload.serviceNum,
-                role: 'admin',
-              },
-            };
-          }
-        } catch (adminError) {
-          console.error(
-            '[AuthController] Error fetching admin details:',
-            adminError,
-          );
+        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
+          payload.serviceNum,
+        );
+        if (admin) {
+          console.log('Admin details:', admin);
+          // Add role: 'admin' to the response object
+          return { success: true, user: { ...admin, role: 'admin' } };
+        } else {
           return {
             success: false,
-            message: 'Error fetching admin details',
+            message: 'Admin not found for this service number',
           };
         }
       } else if (payload.role === 'technician' && payload.serviceNum) {
-        console.log(
-          '[AuthController] Fetching technician details for service number:',
+        const technician = await this.technicianService.findOneTechnician(
           payload.serviceNum,
         );
-        try {
-          const technician = await this.technicianService.findOneTechnician(
-            payload.serviceNum,
-          );
-          if (technician) {
-            console.log('Technician details:', technician);
-            // Add role: 'technician' to the response object
-            return {
-              success: true,
-              user: { ...technician, role: 'technician' },
-            };
-          } else {
-            console.log(
-              `[AuthController] No technician found for service number: ${payload.serviceNum}`,
-            );
-            // For technician role, return basic user info if technician record not found
-            return {
-              success: true,
-              user: {
-                name: payload.name,
-                email: payload.email,
-                serviceNum: payload.serviceNum,
-                role: 'technician',
-              },
-            };
-          }
-        } catch (technicianError) {
-          console.error(
-            '[AuthController] Error fetching technician details:',
-            technicianError,
-          );
+        if (technician) {
+          console.log('Technician details:', technician);
+          // Add role: 'technician' to the response object
+          return { success: true, user: { ...technician, role: 'technician' } };
+        } else {
           return {
             success: false,
-            message: 'Error fetching technician details',
+            message: 'Technician not found for this service number',
           };
         }
-      } else if (payload.role === 'superAdmin') {
-        console.log(
-          '[AuthController] SuperAdmin user authenticated:',
-          payload.serviceNum,
-        );
-        // SuperAdmin users don't need additional record lookup
-        return { success: true, user: { ...payload, role: 'superAdmin' } };
-      } else if (payload.role === 'teamLeader') {
-        console.log(
-          '[AuthController] TeamLeader user authenticated:',
-          payload.serviceNum,
-        );
-        // TeamLeader users don't need additional record lookup
-        return { success: true, user: { ...payload, role: 'teamLeader' } };
       }
       if (payload.role === 'user') {
-        console.log(
-          '[AuthController] Regular user authenticated:',
-          payload.serviceNum,
-        );
         // Add role: 'user' to the response object
         return { success: true, user: { ...payload, role: 'user' } };
       }
-      console.log(
-        '[AuthController] Fallback authentication for role:',
-        payload.role,
-      );
       return { success: true, user: payload };
     } catch (error) {
       if (error instanceof Error) {
