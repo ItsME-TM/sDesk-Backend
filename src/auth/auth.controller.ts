@@ -195,24 +195,73 @@ export class AuthController {
           };
         }
       } else if (payload.role === 'technician' && payload.serviceNum) {
-        const technician = await this.technicianService.findOneTechnician(
+        console.log(
+          '[AuthController] Fetching technician details for service number:',
           payload.serviceNum,
         );
-        if (technician) {
-          console.log('Technician details:', technician);
-          // Add role: 'technician' to the response object
-          return { success: true, user: { ...technician, role: 'technician' } };
-        } else {
+        try {
+          const technician = await this.technicianService.findOneTechnician(
+            payload.serviceNum,
+          );
+          if (technician) {
+            console.log('Technician details:', technician);
+            // Add role: 'technician' to the response object
+            return {
+              success: true,
+              user: { ...technician, role: 'technician' },
+            };
+          } else {
+            console.log(
+              `[AuthController] No technician found for service number: ${payload.serviceNum}`,
+            );
+            // For technician role, return basic user info if technician record not found
+            return {
+              success: true,
+              user: {
+                name: payload.name,
+                email: payload.email,
+                serviceNum: payload.serviceNum,
+                role: 'technician',
+              },
+            };
+          }
+        } catch (technicianError) {
+          console.error(
+            '[AuthController] Error fetching technician details:',
+            technicianError,
+          );
           return {
             success: false,
-            message: 'Technician not found for this service number',
+            message: 'Error fetching technician details',
           };
         }
+      } else if (payload.role === 'superAdmin') {
+        console.log(
+          '[AuthController] SuperAdmin user authenticated:',
+          payload.serviceNum,
+        );
+        // SuperAdmin users don't need additional record lookup
+        return { success: true, user: { ...payload, role: 'superAdmin' } };
+      } else if (payload.role === 'teamLeader') {
+        console.log(
+          '[AuthController] TeamLeader user authenticated:',
+          payload.serviceNum,
+        );
+        // TeamLeader users don't need additional record lookup
+        return { success: true, user: { ...payload, role: 'teamLeader' } };
       }
       if (payload.role === 'user') {
+        console.log(
+          '[AuthController] Regular user authenticated:',
+          payload.serviceNum,
+        );
         // Add role: 'user' to the response object
         return { success: true, user: { ...payload, role: 'user' } };
       }
+      console.log(
+        '[AuthController] Fallback authentication for role:',
+        payload.role,
+      );
       return { success: true, user: payload };
     } catch (error) {
       if (error instanceof Error) {
