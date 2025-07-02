@@ -37,9 +37,13 @@ async function bootstrap() {
 
     next();
   });
-
   app.enableCors({
-    origin: true,
+    origin: [
+      frontendUrl,
+      'https://sdesk-frontend.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
       'Origin',
@@ -53,7 +57,7 @@ async function bootstrap() {
     ],
     exposedHeaders: ['Set-Cookie'],
     credentials: true,
-    preflightContinue: true,
+    preflightContinue: false, // Changed to false for proper handling of preflight requests
     optionsSuccessStatus: 204, // Some legacy browsers choke on 204
   });
 

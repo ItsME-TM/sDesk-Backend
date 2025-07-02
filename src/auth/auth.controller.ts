@@ -32,24 +32,26 @@ export class AuthController {
           body.code,
           body.state,
           body.redirect_uri,
-        );
-      console.log('[AuthController] Microsoft login successful:', user);
+        );      console.log('[AuthController] Microsoft login successful:', user);
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
       
-      const isProduction = process.env.NODE_ENV === 'production';
+      // Always use 'none' for sameSite when using Vercel with Heroku
+      // This allows cookies to be sent in cross-origin requests
       
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: isProduction, // HTTPS required in production
-        sameSite: isProduction ? 'none' : 'strict', // Allow cross-origin in production
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
         maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/', // Ensure cookie is accessible on all paths
       });
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: isProduction, // HTTPS required in production
-        sameSite: isProduction ? 'none' : 'strict', // Allow cross-origin in production
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
         maxAge: 60 * 60 * 1000,
+        path: '/', // Ensure cookie is accessible on all paths
       });
       return { success: true, user, accessToken };
     } catch (error) {
@@ -70,16 +72,17 @@ export class AuthController {
       const refreshToken = req.cookies?.refreshToken;
       if (refreshToken) {
         this.authService.revokeRefreshToken(refreshToken as string);
-      }
-      res.clearCookie('refreshToken', {
+      }      res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: false, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
+        path: '/', // Ensure cookie is accessible on all paths
       });
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: false, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
+        path: '/', // Ensure cookie is accessible on all paths
       });
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
@@ -94,37 +97,38 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ success: boolean; accessToken?: string; message?: string }> {
     try {
-      const refreshToken = req.cookies?.refreshToken;
-      if (!refreshToken) {
+      const refreshToken = req.cookies?.refreshToken;      if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
-          secure: false, // set to true in production
-          sameSite: 'strict',
+          secure: true, // Always use secure cookies with sameSite=none
+          sameSite: 'none', // Required for cross-origin cookies
+          path: '/', // Ensure cookie is accessible on all paths
         });
         console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
       }
       const accessToken = await this.authService.refreshJwtToken(
         refreshToken as string,
-      );
-      res.cookie('jwt', accessToken, {
+      );      res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: false, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
         maxAge: 60 * 60 * 1000,
+        path: '/', // Ensure cookie is accessible on all paths
       });
       console.log('[AuthController] New access token generated:', accessToken);
       return { success: true };
-    } catch (error) {
-      res.clearCookie('jwt', {
+    } catch (error) {      res.clearCookie('jwt', {
         httpOnly: true,
-        secure: false, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
+        path: '/', // Ensure cookie is accessible on all paths
       });
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: false, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Always use secure cookies with sameSite=none
+        sameSite: 'none', // Required for cross-origin cookies
+        path: '/', // Ensure cookie is accessible on all paths
       });
       console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };
