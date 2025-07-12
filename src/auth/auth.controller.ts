@@ -37,18 +37,27 @@ export class AuthController {
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
 
+      // ✅ Update technician to active if login was successful
+      if (user.role === 'technician' && user.serviceNum) {
+        await this.technicianService.updateTechnicianActive(user.serviceNum, true);
+      }
+
+      // ✅ Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
+        secure: true, // set to true in production
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
+
+      // ✅ Set access token cookie
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
+        secure: true, // set to true in production
         sameSite: 'strict',
         maxAge: 60 * 60 * 1000,
       });
+
       return { success: true, user, accessToken };
     } catch (error) {
       console.error('[AuthController] Login error:', error);
@@ -57,28 +66,43 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout(
+  async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): {
-    success: boolean;
-    message: string;
-  } {
+  ): Promise<{ success: boolean; message: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
-      if (refreshToken) {
-        this.authService.revokeRefreshToken(refreshToken as string);
+
+      // ✅ Technician active update
+      const token = req.cookies?.jwt;
+      if (token) {
+        try {
+          const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
+          if (payload.role === 'technician' && payload.serviceNum) {
+            await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
+            console.log(`[Logout] Technician ${payload.serviceNum} marked as inactive`);
+          }
+        } catch (e) {
+          console.warn('[Logout] Failed to decode token:', e.message);
+        }
       }
+
+      if (refreshToken) {
+        this.authService.revokeRefreshToken(refreshToken);
+      }
+
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // set to true in production
+        secure: true,
         sameSite: 'strict',
       });
+
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // set to true in production
+        secure: true,
         sameSite: 'strict',
       });
+
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
       console.error('[AuthController] Logout error:', error);
@@ -96,32 +120,32 @@ export class AuthController {
       if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
-          secure: true, // set to true in production
+          secure: true,
           sameSite: 'strict',
         });
         console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
       }
-      const accessToken = await this.authService.refreshJwtToken(
-        refreshToken as string,
-      );
+
+      const accessToken = await this.authService.refreshJwtToken(refreshToken);
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
+        secure: true,
         sameSite: 'strict',
         maxAge: 60 * 60 * 1000,
       });
+
       console.log('[AuthController] New access token generated:', accessToken);
-      return { success: true };
+      return { success: true, accessToken };
     } catch (error) {
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // set to true in production
+        secure: true,
         sameSite: 'strict',
       });
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // set to true in production
+        secure: true,
         sameSite: 'strict',
       });
       console.error('[AuthController] Refresh token error:', error);
@@ -135,73 +159,56 @@ export class AuthController {
     @Req() req: Request,
   ) {
     let token: string | undefined;
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
     } else if (req.cookies?.jwt) {
       token = req.cookies.jwt;
     }
+
     if (!token) {
       return { success: false, message: 'No token provided' };
     }
+
     try {
-      const payload = verify(
-        token,
-        process.env.JWT_SECRET || 'your-secret-key',
-      ) as UserPayload;
+      const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
       console.log('[AuthController] Logged user payload:', payload);
+
       if (payload.role === 'admin' && payload.serviceNum) {
-        console.log(
-          '[AuthController] Fetching admin details for service number:',
-          payload.serviceNum,
-        );
-        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
-          payload.serviceNum,
-        );
+        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(payload.serviceNum);
         if (admin) {
-          console.log('Admin details:', admin);
-          // Add role: 'admin' to the response object
           return { success: true, user: { ...admin, role: 'admin' } };
         } else {
-          return {
-            success: false,
-            message: 'Admin not found for this service number',
-          };
+          return { success: false, message: 'Admin not found for this service number' };
         }
-      } else if (payload.role === 'technician' && payload.serviceNum) {
-        const technician = await this.technicianService.findOneTechnician(
-          payload.serviceNum,
-        );
+      }
+
+      if (payload.role === 'technician' && payload.serviceNum) {
+        const technician = await this.technicianService.findOneTechnician(payload.serviceNum);
         if (technician) {
-          console.log('Technician details:', technician);
-          // Add role: 'technician' to the response object
           return { success: true, user: { ...technician, role: 'technician' } };
         } else {
-          return {
-            success: false,
-            message: 'Technician not found for this service number',
-          };
+          return { success: false, message: 'Technician not found for this service number' };
         }
       }
+
       if (payload.role === 'user') {
-        // Add role: 'user' to the response object
         return { success: true, user: { ...payload, role: 'user' } };
       }
+
       return { success: true, user: payload };
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          console.error(
-            '[AuthController] Get logged user error: Token expired',
-          );
+          console.error('[AuthController] Get logged user error: Token expired');
           return { success: false, message: 'Token expired' };
         }
         if (error.name === 'JsonWebTokenError') {
-          console.error(
-            '[AuthController] Get logged user error: Invalid token',
-          );
+          console.error('[AuthController] Get logged user error: Invalid token');
           return { success: false, message: 'Invalid token' };
         }
       }
+
       console.error('[AuthController] Get logged user error:', error);
       return { success: false, message: 'Token verification failed' };
     }
