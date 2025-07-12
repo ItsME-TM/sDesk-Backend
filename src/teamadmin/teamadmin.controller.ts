@@ -110,7 +110,7 @@ export class TeamAdminController {
   }
 
   @Get('admins')
-  @Roles('superAdmin')
+@Roles('superAdmin')
   async getAllTeamAdmins(): Promise<TeamAdmin[]> {
     try {
       this.logger.log(
@@ -132,7 +132,7 @@ export class TeamAdminController {
   }
 
   @Get('admin/serviceNumber/:serviceNumber')
-  @Roles('superAdmin')
+  @Roles('superAdmin','admin')
   async getTeamAdminByServiceNumber(
     @Param('serviceNumber') serviceNumber: string,
   ): Promise<TeamAdmin> {
