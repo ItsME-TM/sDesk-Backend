@@ -37,22 +37,17 @@ export class AuthController {
       console.log('[AuthController] Access Token:', accessToken);
       console.log('[AuthController] Refresh Token:', refreshToken);
 
-      // Always use 'none' for sameSite when using Vercel with Heroku
-      // This allows cookies to be sent in cross-origin requests
-
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
+        secure: true, // set to true in production (requires HTTPS)
+        sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: '/', // Ensure cookie is accessible on all paths
       });
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
+        secure: true, // set to true in production (requires HTTPS)
+        sameSite: 'strict',
         maxAge: 60 * 60 * 1000,
-        path: '/', // Ensure cookie is accessible on all paths
       });
       return { success: true, user, accessToken };
     } catch (error) {
@@ -76,15 +71,13 @@ export class AuthController {
       }
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
-        path: '/', // Ensure cookie is accessible on all paths
+        secure: true, // set to true in production
+        sameSite: 'strict',
       });
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
-        path: '/', // Ensure cookie is accessible on all paths
+        secure: true, // set to true in production
+        sameSite: 'strict',
       });
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
@@ -103,9 +96,8 @@ export class AuthController {
       if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
-          secure: true, // Always use secure cookies with sameSite=none
-          sameSite: 'none', // Required for cross-origin cookies
-          path: '/', // Ensure cookie is accessible on all paths
+          secure: true, // set to true in production
+          sameSite: 'strict',
         });
         console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
@@ -115,25 +107,22 @@ export class AuthController {
       );
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
+        secure: true, // set to true in production (requires HTTPS)
+        sameSite: 'strict',
         maxAge: 60 * 60 * 1000,
-        path: '/', // Ensure cookie is accessible on all paths
       });
       console.log('[AuthController] New access token generated:', accessToken);
       return { success: true };
     } catch (error) {
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
-        path: '/', // Ensure cookie is accessible on all paths
+        secure: true, // set to true in production
+        sameSite: 'strict',
       });
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // Always use secure cookies with sameSite=none
-        sameSite: 'none', // Required for cross-origin cookies
-        path: '/', // Ensure cookie is accessible on all paths
+        secure: true, // set to true in production
+        sameSite: 'strict',
       });
       console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };

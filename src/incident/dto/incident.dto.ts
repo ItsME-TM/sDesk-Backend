@@ -43,4 +43,8 @@ export class IncidentDto {
   @IsString()
   @IsOptional()
   Attachment?: string;
+  
+  @IsBoolean()
+  @IsOptional()
+  automaticallyAssignForTier2?: boolean;
 }
