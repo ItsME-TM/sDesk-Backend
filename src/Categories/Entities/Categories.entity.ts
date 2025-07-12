@@ -6,6 +6,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('main_categories')
@@ -29,6 +30,7 @@ export class MainCategory {
   subCategories!: SubCategory[];
 }
 
+@Index(['name', 'mainCategory'], { unique: true })
 @Entity('sub_categories')
 export class SubCategory {
   @PrimaryGeneratedColumn('uuid')
@@ -56,6 +58,7 @@ export class SubCategory {
   categoryItems!: CategoryItem[];
 }
 
+@Index(['name', 'subCategory'], { unique: true })
 @Entity('category_items')
 export class CategoryItem {
   @PrimaryGeneratedColumn('uuid')

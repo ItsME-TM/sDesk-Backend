@@ -21,12 +21,10 @@ import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
 
 @Controller('locations')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class LocationController {
   constructor(private readonly locationService: LocationService) {}
 
   @Post()
-  @Roles('superAdmin')
   // Create a new location entry
   async create(@Body() dto: CreateLocationDto) {
     try {
@@ -69,7 +67,6 @@ export class LocationController {
   }
 
   @Put(':id')
-  @Roles('superAdmin')
   // Update a location entry by id
   async update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     try {
@@ -81,7 +78,6 @@ export class LocationController {
   }
 
   @Delete(':id')
-  @Roles('superAdmin')
   // Delete a location entry by id
   async remove(@Param('id') id: string) {
     try {

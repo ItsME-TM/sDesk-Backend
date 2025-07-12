@@ -50,6 +50,7 @@ describe('IncidentService', () => {
     save: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -235,35 +236,36 @@ describe('IncidentService', () => {
   describe('getAssignedByMe', () => {
     it('should return incidents by informantId', async () => {
       const incidents = [mockIncident];
-      const dto = { informant: 'SV001' } as IncidentDto;
-      mockRepository.find.mockResolvedValue(incidents);
-
-      const result = await service.getAssignedByMe(dto);
-
-      expect(mockRepository.find).toHaveBeenCalledWith({
-        where: { informant: 'SV001' },
+      const informant = 'SV001';
+      mockRepository.createQueryBuilder = jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(incidents),
       });
+
+      const result = await service.getAssignedByMe(informant);
+
       expect(result).toEqual(incidents);
     });
 
     it('should throw BadRequestException if informantId is missing', async () => {
-      const dto = { informant: undefined } as unknown as IncidentDto;
-      await expect(service.getAssignedByMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedByMe('')).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.getAssignedByMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedByMe('')).rejects.toThrow(
         'informant is required',
       );
     });
 
     it('should throw InternalServerErrorException on DB failure', async () => {
-      const dto = { informant: 'SV001' } as IncidentDto;
-      mockRepository.find.mockRejectedValue(new Error('DB error'));
+      mockRepository.createQueryBuilder = jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockRejectedValue(new Error('DB error')),
+      });
 
-      await expect(service.getAssignedByMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedByMe('SV001')).rejects.toThrow(
         InternalServerErrorException,
       );
-      await expect(service.getAssignedByMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedByMe('SV001')).rejects.toThrow(
         'Failed to retrieve incidents assigned by informant: DB error',
       );
     });

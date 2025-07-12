@@ -27,13 +27,11 @@ import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
 
 @Controller('categories')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   // Main Category Endpoints
   @Post('main')
-  @Roles('superAdmin')
   async createMainCategory(
     @Body() dto: MainCategoryDto,
   ): Promise<MainCategory> {
@@ -63,7 +61,6 @@ export class CategoryController {
   }
 
   @Put('main/:id')
-  @Roles('superAdmin')
   async updateMainCategory(
     @Param('id') id: string,
     @Body() dto: MainCategoryDto,
@@ -77,7 +74,6 @@ export class CategoryController {
   }
 
   @Delete('main/:id')
-  @Roles('superAdmin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteMainCategory(@Param('id') id: string): Promise<void> {
     try {
@@ -89,7 +85,6 @@ export class CategoryController {
 
   // Sub Category Endpoints
   @Post('sub')
-  @Roles('superAdmin')
   async createSubCategory(@Body() dto: SubCategoryDto): Promise<SubCategory> {
     try {
       return await this.categoryService.createSubCategory(dto);
@@ -116,7 +111,6 @@ export class CategoryController {
   }
 
   @Put('sub/:id')
-  @Roles('superAdmin')
   async updateSubCategory(
     @Param('id') id: string,
     @Body() dto: SubCategoryDto,
@@ -130,7 +124,6 @@ export class CategoryController {
   }
 
   @Delete('sub/:id')
-  @Roles('superAdmin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteSubCategory(@Param('id') id: string): Promise<void> {
     try {
@@ -156,7 +149,6 @@ export class CategoryController {
 
   // Category Item Endpoints
   @Post('item')
-  @Roles('superAdmin')
   async createCategoryItem(
     @Body() dto: CategoryItemDto,
   ): Promise<CategoryItem> {
@@ -185,7 +177,6 @@ export class CategoryController {
   }
 
   @Put('item/:id')
-  @Roles('superAdmin')
   async updateCategoryItem(
     @Param('id') id: string,
     @Body() dto: CategoryItemDto,
@@ -199,7 +190,6 @@ export class CategoryController {
   }
 
   @Delete('item/:id')
-  @Roles('admin', 'superAdmin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteCategoryItem(@Param('id') id: string): Promise<void> {
     try {

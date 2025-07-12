@@ -24,18 +24,33 @@ export class CategoryService {
   ) {}
 
   private async generateMainCategoryCode(): Promise<string> {
-    const count = await this.mainCategoryRepository.count();
-    return `MAIN${(count + 1).toString().padStart(3, '0')}`;
+    // Find the max numeric suffix for category_code
+    const result = await this.mainCategoryRepository
+      .createQueryBuilder('mainCategory')
+      .select('MAX(CAST(SUBSTRING(mainCategory.category_code, 5) AS int))', 'max')
+      .getRawOne();
+    const max = result?.max ? parseInt(result.max, 10) : 0;
+    return `MAIN${(max + 1).toString().padStart(3, '0')}`;
   }
 
   private async generateSubCategoryCode(): Promise<string> {
-    const count = await this.subCategoryRepository.count();
-    return `SUB${(count + 1).toString().padStart(3, '0')}`;
+    // Find the max numeric suffix for category_code
+    const result = await this.subCategoryRepository
+      .createQueryBuilder('subCategory')
+      .select('MAX(CAST(SUBSTRING(subCategory.category_code, 4) AS int))', 'max')
+      .getRawOne();
+    const max = result?.max ? parseInt(result.max, 10) : 0;
+    return `SUB${(max + 1).toString().padStart(3, '0')}`;
   }
 
   private async generateCategoryItemCode(): Promise<string> {
-    const count = await this.categoryItemRepository.count();
-    return `CAT${(count + 1).toString().padStart(3, '0')}`;
+    // Find the max numeric suffix for category_code
+    const result = await this.categoryItemRepository
+      .createQueryBuilder('categoryItem')
+      .select('MAX(CAST(SUBSTRING(categoryItem.category_code, 4) AS int))', 'max')
+      .getRawOne();
+    const max = result?.max ? parseInt(result.max, 10) : 0;
+    return `CAT${(max + 1).toString().padStart(3, '0')}`;
   }
 
   async createMainCategory(
@@ -60,7 +75,7 @@ export class CategoryService {
 
   async findAllMainCategories(): Promise<MainCategory[]> {
     return this.mainCategoryRepository.find({
-      relations: ['subCategories'],
+      relations: ['subCategories', 'subCategories.categoryItems'],
     });
   }
 
@@ -193,38 +208,73 @@ export class CategoryService {
   ): Promise<CategoryItem> {
     const { subCategoryId, name, ...categoryItemData } = createCategoryItemDto;
 
-    // Check if sub category exists
-    const subCategory = await this.subCategoryRepository.findOne({
-      where: { id: subCategoryId },
-    });
+    // LOG: Debug incoming payload and subcategory lookup
+    // eslint-disable-next-line no-console
+    console.log('createCategoryItemDto:', createCategoryItemDto);
 
+    let subCategoryIdToUse = subCategoryId;
+    if (!subCategoryIdToUse && (categoryItemData as any).subCategory) {
+      subCategoryIdToUse = (categoryItemData as any).subCategory;
+    }
+    if (!subCategoryIdToUse) {
+      // eslint-disable-next-line no-console
+      console.log('No subCategoryId provided');
+      throw new NotFoundException('subCategoryId is required');
+    }
+    const subCategory = await this.subCategoryRepository.findOne({
+      where: { id: subCategoryIdToUse },
+    });
+    // eslint-disable-next-line no-console
+    console.log('subCategory lookup result:', subCategory);
     if (!subCategory) {
+      // eslint-disable-next-line no-console
+      console.log(`Sub category with ID ${subCategoryIdToUse} not found`);
       throw new NotFoundException(
-        `Sub category with ID ${subCategoryId} not found`,
+        `Sub category with ID ${subCategoryIdToUse} not found`,
       );
     }
 
     // Check for duplicate category item name under the same sub category (case-insensitive, trimmed)
     const nameToCheck = name.trim().toLowerCase();
+    // Use the correct FK column for duplicate check
     const existing = await this.categoryItemRepository
       .createQueryBuilder('categoryItem')
       .where('LOWER(TRIM(categoryItem.name)) = :name', { name: nameToCheck })
-      .andWhere('categoryItem.subCategory = :subCategoryId', { subCategoryId })
+      .andWhere('categoryItem.subCategoryId = :subCategoryId', { subCategoryId: subCategoryIdToUse })
       .getOne();
+    // Extra logging for debugging
+    console.log('Checking for duplicate with name:', nameToCheck, 'and subCategoryId:', subCategoryIdToUse);
     if (existing) {
+      console.log('Duplicate found:', existing);
+    }
+    // eslint-disable-next-line no-console
+    console.log('Duplicate check result:', existing);
+    if (existing) {
+      // eslint-disable-next-line no-console
+      console.log(`Duplicate category item name '${name}' under subCategoryId ${subCategoryIdToUse}`);
       throw new Error(`Category item with name '${name}' already exists under this sub category`);
     }
 
     const category_code = await this.generateCategoryItemCode();
 
+    // Create the item without the relation, then assign the loaded entity
     const categoryItem = this.categoryItemRepository.create({
       ...categoryItemData,
       name,
       category_code,
-      subCategory,
     });
+    categoryItem.subCategory = subCategory; // assign the loaded entity after create
 
-    return this.categoryItemRepository.save(categoryItem);
+    // Extra logging for debugging
+    console.log('About to save new categoryItem:', JSON.stringify(categoryItem, null, 2));
+    try {
+      const saved = await this.categoryItemRepository.save(categoryItem);
+      console.log('Successfully saved categoryItem:', JSON.stringify(saved, null, 2));
+      return saved;
+    } catch (err) {
+      console.error('Error saving categoryItem:', err);
+      throw err;
+    }
   }
 
   async findAllCategoryItems(): Promise<CategoryItem[]> {
@@ -297,13 +347,9 @@ export class CategoryService {
   }
 
   async findSubCategoriesByMainCategoryId(mainCategoryId: string): Promise<SubCategory[]> {
-    const mainCategory = await this.mainCategoryRepository.findOne({ where: { id: mainCategoryId } });
-    if (!mainCategory) {
-      throw new NotFoundException(`Main category with ID ${mainCategoryId} not found`);
-    }
     return this.subCategoryRepository.find({
       where: { mainCategory: { id: mainCategoryId } },
-      relations: ['mainCategory', 'categoryItems'],
+      relations: ['mainCategory'],
     });
   }
 }
