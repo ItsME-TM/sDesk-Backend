@@ -39,22 +39,26 @@ export class AuthController {
 
       // ✅ Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
-        await this.technicianService.updateTechnicianActive(user.serviceNum, true);
+        await this.technicianService.updateTechnicianActive(
+          user.serviceNum,
+          true,
+        );
       }
 
       // ✅ Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Must be true in production
+        sameSite: 'none', // Allows cross-origin
+        path: '/auth/refresh-token', // Optional, restricts cookie to refresh endpoint
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       // ✅ Set access token cookie
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true, // Must be true in production
+        sameSite: 'none', // Allows cross-origin
         maxAge: 60 * 60 * 1000,
       });
 
@@ -77,10 +81,18 @@ export class AuthController {
       const token = req.cookies?.jwt;
       if (token) {
         try {
-          const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
+          const payload = verify(
+            token,
+            process.env.JWT_SECRET || 'your-secret-key',
+          ) as UserPayload;
           if (payload.role === 'technician' && payload.serviceNum) {
-            await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
-            console.log(`[Logout] Technician ${payload.serviceNum} marked as inactive`);
+            await this.technicianService.updateTechnicianActive(
+              payload.serviceNum,
+              false,
+            );
+            console.log(
+              `[Logout] Technician ${payload.serviceNum} marked as inactive`,
+            );
           }
         } catch (e) {
           console.warn('[Logout] Failed to decode token:', e.message);
@@ -94,13 +106,14 @@ export class AuthController {
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: true,
-        sameSite: 'strict',
+        sameSite: 'none',
+        path: '/auth/refresh-token',
       });
 
       res.clearCookie('jwt', {
         httpOnly: true,
         secure: true,
-        sameSite: 'strict',
+        sameSite: 'none',
       });
 
       return { success: true, message: 'Logged out successfully' };
@@ -121,7 +134,7 @@ export class AuthController {
         res.clearCookie('jwt', {
           httpOnly: true,
           secure: true,
-          sameSite: 'strict',
+          sameSite: 'none',
         });
         console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
@@ -131,7 +144,7 @@ export class AuthController {
       res.cookie('jwt', accessToken, {
         httpOnly: true,
         secure: true,
-        sameSite: 'strict',
+        sameSite: 'none',
         maxAge: 60 * 60 * 1000,
       });
 
@@ -141,12 +154,13 @@ export class AuthController {
       res.clearCookie('jwt', {
         httpOnly: true,
         secure: true,
-        sameSite: 'strict',
+        sameSite: 'none',
       });
       res.clearCookie('refreshToken', {
         httpOnly: true,
         secure: true,
-        sameSite: 'strict',
+        sameSite: 'none',
+        path: '/auth/refresh-token',
       });
       console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };
@@ -171,24 +185,37 @@ export class AuthController {
     }
 
     try {
-      const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
+      const payload = verify(
+        token,
+        process.env.JWT_SECRET || 'your-secret-key',
+      ) as UserPayload;
       console.log('[AuthController] Logged user payload:', payload);
 
       if (payload.role === 'admin' && payload.serviceNum) {
-        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(payload.serviceNum);
+        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
+          payload.serviceNum,
+        );
         if (admin) {
           return { success: true, user: { ...admin, role: 'admin' } };
         } else {
-          return { success: false, message: 'Admin not found for this service number' };
+          return {
+            success: false,
+            message: 'Admin not found for this service number',
+          };
         }
       }
 
       if (payload.role === 'technician' && payload.serviceNum) {
-        const technician = await this.technicianService.findOneTechnician(payload.serviceNum);
+        const technician = await this.technicianService.findOneTechnician(
+          payload.serviceNum,
+        );
         if (technician) {
           return { success: true, user: { ...technician, role: 'technician' } };
         } else {
-          return { success: false, message: 'Technician not found for this service number' };
+          return {
+            success: false,
+            message: 'Technician not found for this service number',
+          };
         }
       }
 
@@ -200,11 +227,15 @@ export class AuthController {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          console.error('[AuthController] Get logged user error: Token expired');
+          console.error(
+            '[AuthController] Get logged user error: Token expired',
+          );
           return { success: false, message: 'Token expired' };
         }
         if (error.name === 'JsonWebTokenError') {
-          console.error('[AuthController] Get logged user error: Invalid token');
+          console.error(
+            '[AuthController] Get logged user error: Invalid token',
+          );
           return { success: false, message: 'Invalid token' };
         }
       }
