@@ -39,14 +39,15 @@ export class AuthController {
 
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: true, // Must be true in production (requires HTTPS)
+        sameSite: 'none', // Allows cross-origin
+        path: '/auth/refresh-token', // Optional, restricts cookie to refresh endpoint
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: true, // Must be true in production (requires HTTPS)
+        sameSite: 'none', // Allows cross-origin
         maxAge: 60 * 60 * 1000,
       });
       return { success: true, user, accessToken };
@@ -71,13 +72,14 @@ export class AuthController {
       }
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
+        path: '/auth/refresh-token',
       });
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
       });
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
@@ -96,8 +98,8 @@ export class AuthController {
       if (!refreshToken) {
         res.clearCookie('jwt', {
           httpOnly: true,
-          secure: true, // set to true in production
-          sameSite: 'strict',
+          secure: true,
+          sameSite: 'none',
         });
         console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
@@ -107,8 +109,8 @@ export class AuthController {
       );
       res.cookie('jwt', accessToken, {
         httpOnly: true,
-        secure: true, // set to true in production (requires HTTPS)
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
         maxAge: 60 * 60 * 1000,
       });
       console.log('[AuthController] New access token generated:', accessToken);
@@ -116,13 +118,14 @@ export class AuthController {
     } catch (error) {
       res.clearCookie('jwt', {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
       });
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: true, // set to true in production
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
+        path: '/auth/refresh-token',
       });
       console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };
