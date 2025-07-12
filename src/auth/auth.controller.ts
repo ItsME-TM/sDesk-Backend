@@ -39,7 +39,10 @@ export class AuthController {
 
       // ✅ Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
-        await this.technicianService.updateTechnicianActive(user.serviceNum, true);
+        await this.technicianService.updateTechnicianActive(
+          user.serviceNum,
+          true,
+        );
       }
 
       // ✅ Set refresh token cookie
@@ -78,10 +81,18 @@ export class AuthController {
       const token = req.cookies?.jwt;
       if (token) {
         try {
-          const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
+          const payload = verify(
+            token,
+            process.env.JWT_SECRET || 'your-secret-key',
+          ) as UserPayload;
           if (payload.role === 'technician' && payload.serviceNum) {
-            await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
-            console.log(`[Logout] Technician ${payload.serviceNum} marked as inactive`);
+            await this.technicianService.updateTechnicianActive(
+              payload.serviceNum,
+              false,
+            );
+            console.log(
+              `[Logout] Technician ${payload.serviceNum} marked as inactive`,
+            );
           }
         } catch (e) {
           console.warn('[Logout] Failed to decode token:', e.message);
@@ -174,24 +185,37 @@ export class AuthController {
     }
 
     try {
-      const payload = verify(token, process.env.JWT_SECRET || 'your-secret-key') as UserPayload;
+      const payload = verify(
+        token,
+        process.env.JWT_SECRET || 'your-secret-key',
+      ) as UserPayload;
       console.log('[AuthController] Logged user payload:', payload);
 
       if (payload.role === 'admin' && payload.serviceNum) {
-        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(payload.serviceNum);
+        const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
+          payload.serviceNum,
+        );
         if (admin) {
           return { success: true, user: { ...admin, role: 'admin' } };
         } else {
-          return { success: false, message: 'Admin not found for this service number' };
+          return {
+            success: false,
+            message: 'Admin not found for this service number',
+          };
         }
       }
 
       if (payload.role === 'technician' && payload.serviceNum) {
-        const technician = await this.technicianService.findOneTechnician(payload.serviceNum);
+        const technician = await this.technicianService.findOneTechnician(
+          payload.serviceNum,
+        );
         if (technician) {
           return { success: true, user: { ...technician, role: 'technician' } };
         } else {
-          return { success: false, message: 'Technician not found for this service number' };
+          return {
+            success: false,
+            message: 'Technician not found for this service number',
+          };
         }
       }
 
@@ -203,11 +227,15 @@ export class AuthController {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          console.error('[AuthController] Get logged user error: Token expired');
+          console.error(
+            '[AuthController] Get logged user error: Token expired',
+          );
           return { success: false, message: 'Token expired' };
         }
         if (error.name === 'JsonWebTokenError') {
-          console.error('[AuthController] Get logged user error: Invalid token');
+          console.error(
+            '[AuthController] Get logged user error: Invalid token',
+          );
           return { success: false, message: 'Invalid token' };
         }
       }
