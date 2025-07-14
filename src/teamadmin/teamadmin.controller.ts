@@ -19,14 +19,14 @@ import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
 
 @Controller()
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class TeamAdminController {
   private readonly logger = new Logger(TeamAdminController.name);
 
   constructor(private readonly teamAdminService: TeamAdminService) {}
 
   @Post('admin/:teamId')
-  @Roles('superAdmin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async createTeamAdmin(
     @Param('teamId') teamId: string,
     @Body() teamAdminDto: TeamAdminDto,
@@ -51,7 +51,8 @@ export class TeamAdminController {
   }
 
   @Put('admin/:id')
-  @Roles('superAdmin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async updateTeamAdminByTeamId(
     @Param('id') id: string,
     @Body() teamAdminDto: TeamAdminDto,
@@ -82,7 +83,8 @@ export class TeamAdminController {
   }
 
   @Delete('admin/:id')
-  @Roles('superAdmin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deleteTeamAdminByTeamId(@Param('id') id: string) {
     try {
       this.logger.log(
@@ -110,7 +112,8 @@ export class TeamAdminController {
   }
 
   @Get('admins')
-@Roles('superAdmin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAllTeamAdmins(): Promise<TeamAdmin[]> {
     try {
       this.logger.log(
@@ -132,7 +135,8 @@ export class TeamAdminController {
   }
 
   @Get('admin/serviceNumber/:serviceNumber')
-  @Roles('superAdmin','admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getTeamAdminByServiceNumber(
     @Param('serviceNumber') serviceNumber: string,
   ): Promise<TeamAdmin> {

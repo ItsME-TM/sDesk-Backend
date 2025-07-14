@@ -10,7 +10,11 @@ import {
   HttpStatus,
   Res,
   Req,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
+import { RolesGuard } from '../middlewares/roles.guard';
+import { Roles } from '../middlewares/roles.decorator';
 import { TechnicianService } from './technician.service';
 import { CreateTechnicianDto } from './dto/create-technician.dto';
 import { Technician } from './entities/technician.entity';
@@ -24,8 +28,9 @@ export class TechnicianController {
     private readonly authService: AuthService,
   ) {}
 
- 
   @Post('technician')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async add(
     @Body() dto: CreateTechnicianDto,
     @Res() res: Response,
@@ -63,11 +68,10 @@ export class TechnicianController {
     return res.json(technician);
   }
 
-@Get('technician/check-status')
-  async checkTechnicianStatus(
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
+  @Get('technician/check-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async checkTechnicianStatus(@Req() req: Request, @Res() res: Response) {
     const token = req.cookies?.jwt;
     console.log('[GET /technician/check-status] Token:', token);
 
@@ -80,18 +84,26 @@ export class TechnicianController {
     try {
       const user = this.authService.getUserFromAccessToken(token);
       if (!user || user.role !== 'technician') {
-        return res.status(HttpStatus.FORBIDDEN).json({ message: 'Access denied.' });
+        return res
+          .status(HttpStatus.FORBIDDEN)
+          .json({ message: 'Access denied.' });
       }
 
-      const technician = await this.technicianService.findOneTechnician(user.serviceNum);
+      const technician = await this.technicianService.findOneTechnician(
+        user.serviceNum,
+      );
 
       if (!technician.active) {
         res.clearCookie('jwt');
         res.clearCookie('refreshToken');
-        return res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Deactivated. You have been logged out.' });
+        return res
+          .status(HttpStatus.UNAUTHORIZED)
+          .json({ message: 'Deactivated. You have been logged out.' });
       }
 
-      return res.status(HttpStatus.OK).json({ message: 'You are active.', user: technician });
+      return res
+        .status(HttpStatus.OK)
+        .json({ message: 'You are active.', user: technician });
     } catch (err) {
       console.error('[Check Technician Status] Error:', err);
       return res
@@ -100,6 +112,8 @@ export class TechnicianController {
     }
   }
   @Get('technicians')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async findAllTechnicians(): Promise<Technician[]> {
     try {
       return await this.technicianService.findAllTechncians();
@@ -111,20 +125,23 @@ export class TechnicianController {
     }
   }
 
-
-@Get('technician/active')
-async getActiveTechnicians(): Promise<Technician[]> {
-  try {
-    return await this.technicianService.findActiveTechnicians();
-  } catch (error) {
-    throw new HttpException(
-      error.message || 'Failed to fetch active technicians.',
-      error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+  @Get('technician/active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async getActiveTechnicians(): Promise<Technician[]> {
+    try {
+      return await this.technicianService.findActiveTechnicians();
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to fetch active technicians.',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
-}
 
   @Get('technician/:serviceNum')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async findOneTechnician(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Technician> {
@@ -138,7 +155,9 @@ async getActiveTechnicians(): Promise<Technician[]> {
     }
   }
 
-   @Put('technician/:serviceNum')
+  @Put('technician/:serviceNum')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async updateTechnician(
     @Param('serviceNum') serviceNum: string,
     @Body() dto: CreateTechnicianDto,
@@ -153,9 +172,9 @@ async getActiveTechnicians(): Promise<Technician[]> {
     }
   }
 
-  
-
   @Delete('technician/:serviceNum')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deleteTechnician(
     @Param('serviceNum') serviceNum: string,
   ): Promise<{ message: string }> {
@@ -170,13 +189,10 @@ async getActiveTechnicians(): Promise<Technician[]> {
     }
   }
   @Put('technician/:serviceNum/deactivate')
-async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
-  await this.technicianService.updateTechnicianActive(serviceNum, false);
-  return { message: 'Technician deactivated' };
-}
-
-
-
-
-
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
+    await this.technicianService.updateTechnicianActive(serviceNum, false);
+    return { message: 'Technician deactivated' };
+  }
 }
