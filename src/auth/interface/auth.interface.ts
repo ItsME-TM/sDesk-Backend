@@ -4,6 +4,7 @@ export interface User {
   serviceNum: string;
   name: string;
   role: 'admin' | 'user' | 'technician' | 'teamLeader' | 'superAdmin';
+  contactNumber?: string;
 }
 
 export interface DecodedIdToken {

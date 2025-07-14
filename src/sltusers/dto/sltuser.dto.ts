@@ -15,5 +15,9 @@ export class SLTUserDto {
 
   @IsOptional()
   @IsString()
+  contactNumber?: string;
+
+  @IsOptional()
+  @IsString()
   role?: 'user' | 'admin' | 'technician' | 'teamLeader' | 'superAdmin';
 }

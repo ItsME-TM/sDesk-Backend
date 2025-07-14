@@ -25,6 +25,9 @@ export class SLTUser {
   @Column()
   email!: string;
 
+  @Column({ nullable: true })
+  contactNumber?: string;
+
   @Column({
     type: 'enum',
     enum: ['user', 'admin', 'technician', 'teamLeader', 'superAdmin'],

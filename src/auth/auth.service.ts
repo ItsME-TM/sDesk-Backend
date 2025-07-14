@@ -52,6 +52,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         serviceNum: user.serviceNum,
+        contactNumber: user.contactNumber,
       },
       this.configService.get<string>('JWT_SECRET', 'your-secret-key'),
       { expiresIn: '15m' }, // Short-lived access token
@@ -94,6 +95,44 @@ export class AuthService {
       const id_token: string | undefined = (
         tokenResponse.data as { id_token?: string }
       ).id_token;
+      const access_token: string | undefined = (
+        tokenResponse.data as { access_token?: string }
+      ).access_token;
+      let contactNumber: string | undefined = undefined;
+
+      // Fetch contact number from Microsoft Graph API if access_token is available
+      if (access_token) {
+        try {
+          const graphResponse = await axios.get(
+            'https://graph.microsoft.com/v1.0/me',
+            {
+              headers: { Authorization: `Bearer ${access_token}` },
+            },
+          );
+          // Try to get mobilePhone or businessPhones[0]
+          const data = graphResponse.data as {
+            mobilePhone?: string;
+            businessPhones?: string[];
+          };
+          contactNumber =
+            data.mobilePhone ||
+            (Array.isArray(data.businessPhones)
+              ? data.businessPhones[0]
+              : undefined);
+
+          console.log('[AuthService] Graph API contactNumber:', contactNumber);
+        } catch (e: any) {
+          let errMsg = e;
+          if (e && typeof e === 'object' && 'message' in e) {
+            errMsg = (e as { message: string }).message;
+          }
+          console.warn(
+            '[AuthService] Could not fetch contact number from Graph API:',
+            errMsg,
+          );
+        }
+      }
+
       if (id_token) {
         const decodedIdToken = decode(id_token) as DecodedIdToken;
         console.log('[AuthService] Decoded id_token:', decodedIdToken);
@@ -120,6 +159,7 @@ export class AuthService {
             email,
             serviceNum,
             role: 'user',
+            contactNumber,
           });
         }
         if (!user) throw new UnauthorizedException('User creation failed');
@@ -130,6 +170,7 @@ export class AuthService {
           name: user.display_name,
           role: user.role,
           serviceNum: user.serviceNum,
+          contactNumber: user.contactNumber,
         });
         return {
           accessToken,
@@ -140,6 +181,7 @@ export class AuthService {
             name: user.display_name,
             role: user.role,
             serviceNum: user.serviceNum,
+            contactNumber: user.contactNumber,
           },
         };
       }
@@ -186,6 +228,7 @@ export class AuthService {
           email: user.email,
           role: user.role,
           serviceNum: user.serviceNum,
+          contactNumber: user.contactNumber,
         },
         this.configService.get<string>('JWT_SECRET', 'your-secret-key'),
         { expiresIn: '15m' },
