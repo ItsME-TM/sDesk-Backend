@@ -35,7 +35,7 @@ export class SLTUsersController {
   }
 
   @Get('serviceNum/:serviceNum')
-  @Roles('admin','superAdmin','user', 'technician')
+  @Roles('admin', 'superAdmin', 'user', 'technician')
   async getUserByServiceNum(
     @Param('serviceNum') serviceNum: string,
   ): Promise<SLTUser | null> {

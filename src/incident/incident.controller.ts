@@ -1,4 +1,7 @@
-import { Controller, Post, Body, Get, Put, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Put, Param, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
+import { RolesGuard } from '../middlewares/roles.guard';
+import { Roles } from '../middlewares/roles.decorator';
 import { IncidentService } from './incident.service';
 import { IncidentDto } from './dto/incident.dto';
 import { Incident } from './entities/incident.entity';
@@ -9,6 +12,8 @@ export class IncidentController {
   constructor(private readonly incidentService: IncidentService) {}
 //post method
   @Post('create-incident')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async create(@Body() incidentDto: IncidentDto): Promise<Incident> {
     // eslint-disable-next-line no-useless-catch
     try {
@@ -18,6 +23,8 @@ export class IncidentController {
     }
   }
   @Get('assigned-to-me/:serviceNum')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAssignedToMe(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Incident[]> {
@@ -29,6 +36,8 @@ export class IncidentController {
     }
   }
   @Get('assigned-by-me/:serviceNum')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAssignedByMe(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Incident[]> {
@@ -62,6 +71,8 @@ export class IncidentController {
   }
 
   @Get('all-teams')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAll(): Promise<Incident[]> {
     // eslint-disable-next-line no-useless-catch
     try {
@@ -71,6 +82,8 @@ export class IncidentController {
     }
   }
   @Get('view-team-incidents/:teamId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getByCategory(@Param('teamId') teamId: string): Promise<Incident[]> {
     // eslint-disable-next-line no-useless-catch
     try {
@@ -81,6 +94,8 @@ export class IncidentController {
   }
 
   @Put(':incident_number')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async update(
     @Param('incident_number') incident_number: string,
     @Body() incidentDto: IncidentDto,
@@ -94,6 +109,8 @@ export class IncidentController {
   }
 
   @Get(':incident_number')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getIncidentByNumber(
     @Param('incident_number') incident_number: string,
   ): Promise<Incident> {
@@ -106,6 +123,8 @@ export class IncidentController {
   }
 
   @Get(':incident_number/history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getIncidentHistory(
     @Param('incident_number') incident_number: string,
   ): Promise<IncidentHistory[]> {

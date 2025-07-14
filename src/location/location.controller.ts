@@ -25,6 +25,8 @@ export class LocationController {
   constructor(private readonly locationService: LocationService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   // Create a new location entry
   async create(@Body() dto: CreateLocationDto) {
     try {
@@ -41,6 +43,8 @@ export class LocationController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   // Retrieve all location records from the database
   async findAll() {
     try {
@@ -52,7 +56,8 @@ export class LocationController {
   }
 
   @Get(':id')
-  @Roles('superAdmin', 'admin', 'teamLeader', 'user', 'technician')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   // Retrieve a single location by its id
   async findOne(@Param('id') id: string) {
     try {
@@ -67,6 +72,8 @@ export class LocationController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   // Update a location entry by id
   async update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     try {
@@ -78,6 +85,8 @@ export class LocationController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   // Delete a location entry by id
   async remove(@Param('id') id: string) {
     try {
