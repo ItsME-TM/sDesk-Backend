@@ -61,9 +61,7 @@ async function bootstrap() {
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
-
   const httpServer = createServer(app.getHttpAdapter().getInstance());
-
   io = new Server(httpServer, {
     cors: {
       origin: allowedOrigins,
@@ -72,13 +70,7 @@ async function bootstrap() {
     },
   });
 
-  io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-
-    socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
-    });
-  });
+  console.log('🔧 Socket.IO server initialized');
 
   await app.init();
 
@@ -91,16 +83,49 @@ async function bootstrap() {
   });
 
   io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+    console.log('✅ [SOCKET] Client connected:', socket.id);
+    console.log('📊 [SOCKET] Total connected clients:', io.engine.clientsCount);
+
+    // Store user info when they connect (for targeted notifications)
+    socket.on('user_connected', (userData: any) => {
+      console.log('👤 [SOCKET] User authenticated:', userData);
+
+      // Store user data in socket for reference
+      (socket as any).userId = userData.serviceNum;
+      (socket as any).userRole = userData.role;
+
+      // Only join user-specific room for targeted notifications
+      void socket.join(`user_${userData.serviceNum}`);
+
+      console.log(
+        `👤 [SOCKET] User ${userData.serviceNum} (${userData.role}) joined room: user_${userData.serviceNum}`,
+      );
+    });
 
     socket.on('test_message', (data) => {
-      console.log('📨 Received test message:', data);
+      console.log('📨 [SOCKET] Received test message:', data);
       socket.emit('test_response', { message: 'Hello back from server!' });
+      console.log('📤 [SOCKET] Sent test response to client:', socket.id);
     });
 
     socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
+      console.log('❌ [SOCKET] Client disconnected:', socket.id);
+      if ((socket as any).userId) {
+        console.log(`👤 [SOCKET] User ${(socket as any).userId} disconnected`);
+      }
+      console.log(
+        '📊 [SOCKET] Remaining connected clients:',
+        io.engine.clientsCount,
+      );
     });
+  });
+
+  // Add global socket event listener to monitor all emissions
+  io.engine.on('connection_error', (err) => {
+    console.log('🚨 [SOCKET] Connection error:', err.req);
+    console.log('🚨 [SOCKET] Error code:', err.code);
+    console.log('🚨 [SOCKET] Error message:', err.message);
+    console.log('🚨 [SOCKET] Error context:', err.context);
   });
 }
 
