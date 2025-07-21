@@ -152,7 +152,6 @@ export class IncidentController {
       throw error;
     }
   }
-
   @Put(':incident_number')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -160,10 +159,68 @@ export class IncidentController {
     @Param('incident_number') incident_number: string,
     @Body() incidentDto: IncidentDto,
   ): Promise<Incident> {
-    // eslint-disable-next-line no-useless-catch
+    console.log(
+      '🔍 [IncidentController] update endpoint called for incident:',
+      incident_number,
+    );
+    console.log('🔍 [IncidentController] Update data:', incidentDto);
+
     try {
-      return await this.incidentService.update(incident_number, incidentDto);
+      const updatedIncident = await this.incidentService.update(
+        incident_number,
+        incidentDto,
+      );
+      console.log(
+        '✅ [IncidentController] Incident updated successfully:',
+        updatedIncident.incident_number,
+      );
+
+      // Emit socket event to all clients when incident is updated
+      console.log(
+        '📡 [IncidentController] Emitting socket event: incident_updated',
+      );
+      console.log('📡 [IncidentController] Socket IO instance exists:', !!io);
+
+      if (io) {
+        console.log(
+          '📡 [IncidentController] Connected clients count:',
+          io.engine.clientsCount,
+        );
+
+        const eventData = { incident: updatedIncident };
+
+        // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_updated', eventData);
+        console.log(
+          '📡 [IncidentController] Broadcast incident_updated to ALL users (for Redux update)',
+        );
+
+        // 2. Send targeted notification to assigned handler (with popup)
+        if (updatedIncident.handler) {
+          io.to(`user_${updatedIncident.handler}`).emit(
+            'incident_updated_assigned',
+            {
+              ...eventData,
+              message: `Incident ${updatedIncident.incident_number} has been updated`,
+            },
+          );
+          console.log(
+            `📡 [IncidentController] Targeted incident_updated_assigned sent to: ${updatedIncident.handler}`,
+          );
+        }
+
+        console.log('📡 [IncidentController] Update event data:', {
+          incident_number: updatedIncident.incident_number,
+          handler: updatedIncident.handler,
+          status: updatedIncident.status,
+        });
+      } else {
+        console.log('❌ [IncidentController] Socket.IO instance not available');
+      }
+
+      return updatedIncident;
     } catch (error) {
+      console.error('❌ [IncidentController] Error updating incident:', error);
       throw error;
     }
   }
@@ -248,5 +305,59 @@ export class IncidentController {
     }
 
     return { message: 'Test socket events emitted successfully' };
+  }
+
+  // Test endpoint for socket update functionality
+  @Post('test-socket-update')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  testSocketUpdate(): { message: string } {
+    console.log('🧪 [IncidentController] test-socket-update endpoint called');
+
+    // Create a mock updated incident for testing
+    const mockUpdatedIncident = {
+      incident_number: `UPDATE-TEST-${Date.now()}`,
+      informant: '105553',
+      location: 'Updated Test Location',
+      handler: '105553',
+      category: 'Socket Update Test',
+      status: 'In Progress',
+      priority: 'High',
+      problem:
+        'Testing socket update functionality - Status changed to In Progress',
+    };
+
+    console.log(
+      '📡 [IncidentController] Emitting test socket update events: incident_updated',
+    );
+
+    if (io) {
+      console.log(
+        '📡 [IncidentController] Connected clients count:',
+        io.engine.clientsCount,
+      );
+
+      const eventData = { incident: mockUpdatedIncident };
+
+      // 1. General notification to all users (no popup)
+      io.emit('incident_updated', eventData);
+      console.log('📡 [IncidentController] Broadcast update to ALL users');
+
+      // 2. Targeted notification to assigned handler (with popup)
+      io.to(`user_${mockUpdatedIncident.handler}`).emit(
+        'incident_updated_assigned',
+        {
+          ...eventData,
+          message: `Test update: Incident ${mockUpdatedIncident.incident_number} has been updated`,
+        },
+      );
+      console.log(
+        `📡 [IncidentController] Targeted incident_updated_assigned sent to: ${mockUpdatedIncident.handler}`,
+      );
+    } else {
+      console.log('❌ [IncidentController] Socket.IO instance not available');
+    }
+
+    return { message: 'Test socket update events emitted successfully' };
   }
 }
