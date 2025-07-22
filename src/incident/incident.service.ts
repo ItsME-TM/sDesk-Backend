@@ -111,7 +111,21 @@ export class IncidentService {
         handler: assignedTechnician.serviceNum,
       });
 
-      return await this.incidentRepository.save(incident);
+      const savedIncident = await this.incidentRepository.save(incident);
+
+      // Create initial incident history entry
+      const initialHistory = this.incidentHistoryRepository.create({
+        incidentNumber: savedIncident.incident_number,
+        status: savedIncident.status,
+        assignedTo: savedIncident.handler,
+        updatedBy: savedIncident.informant, // Assuming informant is the initial creator/reporter
+        comments: incidentDto.description, // The description from the initial incident creation
+        category: savedIncident.category,
+        location: savedIncident.location,
+      });
+      await this.incidentHistoryRepository.save(initialHistory);
+
+      return savedIncident;
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;

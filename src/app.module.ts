@@ -8,6 +8,7 @@ import * as dotenv from 'dotenv';
 import { IncidentModule } from './incident/incident.module';
 import { Incident } from './incident/entities/incident.entity';
 import { CategoryModule } from './Categories/Categories.module';
+import { IncidentHistory } from './incident/entities/incident-history.entity';
 import {
   MainCategory,
   SubCategory,
@@ -43,6 +44,7 @@ dotenv.config();
         Team,
         Technician,
         Location,
+         IncidentHistory,
       ],
       synchronize: true,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
