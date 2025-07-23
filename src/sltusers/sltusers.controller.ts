@@ -22,7 +22,7 @@ export class SLTUsersController {
   constructor(private readonly sltUsersService: SLTUsersService) {}
 
   @Get()
-  @Roles('admin', 'superAdmin', 'technician')
+  @Roles('admin', 'superAdmin', 'technician', 'user')
   async getAllUsers(): Promise<SLTUser[]> {
     try {
       return await this.sltUsersService.findAll();
