@@ -54,9 +54,6 @@ export class Incident {
   @Column({ type: 'boolean', default: false })
   notify_informant!: boolean;
 
-  @Column()
-  urgent_notification_to!: string;
-
   @Column({ nullable: true })
   Attachment!: string;
 }
