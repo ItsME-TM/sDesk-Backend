@@ -38,12 +38,8 @@ export class IncidentDto {
 
   @IsString()
   @IsOptional()
-  urgent_notification_to?: string;
-
-  @IsString()
-  @IsOptional()
   Attachment?: string;
-  
+
   @IsBoolean()
   @IsOptional()
   automaticallyAssignForTier2?: boolean;

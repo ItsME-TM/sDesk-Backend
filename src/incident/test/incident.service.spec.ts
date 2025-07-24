@@ -29,7 +29,6 @@ describe('IncidentService', () => {
     priority: IncidentPriority.CRITICAL,
     description: 'Laptop not turning on.',
     notify_informant: true,
-    urgent_notification_to: 'SV001',
     Attachment: '',
   };
 
@@ -199,10 +198,10 @@ describe('IncidentService', () => {
   describe('getAssignedToMe', () => {
     it('should return incidents by handlerId', async () => {
       const incidents = [mockIncident];
-      const dto = { handler: 'SV010' } as IncidentDto;
+      const handler = 'SV010';
       mockRepository.find.mockResolvedValue(incidents);
 
-      const result = await service.getAssignedToMe(dto);
+      const result = await service.getAssignedToMe(handler);
 
       expect(mockRepository.find).toHaveBeenCalledWith({
         where: { handler: 'SV010' },
@@ -211,23 +210,23 @@ describe('IncidentService', () => {
     });
 
     it('should throw BadRequestException if handlerId is missing', async () => {
-      const dto = { handler: undefined } as unknown as IncidentDto;
-      await expect(service.getAssignedToMe(dto)).rejects.toThrow(
+      const handler = '';
+      await expect(service.getAssignedToMe(handler)).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.getAssignedToMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedToMe(handler)).rejects.toThrow(
         'handler is required',
       );
     });
 
     it('should throw InternalServerErrorException on DB failure', async () => {
-      const dto = { handler: 'SV010' } as IncidentDto;
+      const handler = 'SV010';
       mockRepository.find.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.getAssignedToMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedToMe(handler)).rejects.toThrow(
         InternalServerErrorException,
       );
-      await expect(service.getAssignedToMe(dto)).rejects.toThrow(
+      await expect(service.getAssignedToMe(handler)).rejects.toThrow(
         'Failed to retrieve incidents: DB error',
       );
     });
@@ -274,10 +273,10 @@ describe('IncidentService', () => {
   describe('getByCategory', () => {
     it('should return incidents by category', async () => {
       const incidents = [mockIncident];
-      const dto = { category: 'CAT015' } as unknown as IncidentDto;
+      const category = 'CAT015';
       mockRepository.find.mockResolvedValue(incidents);
 
-      const result = await service.getByCategory(dto);
+      const result = await service.getByCategory(category);
 
       expect(mockRepository.find).toHaveBeenCalledWith({
         where: { category: 'CAT015' },
@@ -286,23 +285,23 @@ describe('IncidentService', () => {
     });
 
     it('should throw BadRequestException if categoryId is missing', async () => {
-      const dto = { category: undefined } as unknown as IncidentDto;
-      await expect(service.getByCategory(dto)).rejects.toThrow(
+      const category = '';
+      await expect(service.getByCategory(category)).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.getByCategory(dto)).rejects.toThrow(
+      await expect(service.getByCategory(category)).rejects.toThrow(
         'category is required',
       );
     });
 
     it('should throw InternalServerErrorException on DB failure', async () => {
-      const dto = { category: 'CAT015' } as unknown as IncidentDto;
+      const category = 'CAT015';
       mockRepository.find.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.getByCategory(dto)).rejects.toThrow(
+      await expect(service.getByCategory(category)).rejects.toThrow(
         InternalServerErrorException,
       );
-      await expect(service.getByCategory(dto)).rejects.toThrow(
+      await expect(service.getByCategory(category)).rejects.toThrow(
         'Failed to retrieve incidents by category: DB error',
       );
     });
