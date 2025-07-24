@@ -6,6 +6,7 @@ import {
   Put,
   Param,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
@@ -141,6 +142,18 @@ export class IncidentController {
       throw error;
     }
   }
+
+  @Get('dashboard-stats')
+  async getDashboardStats(
+    @Query('userParentCategory') userParentCategory?: string,
+  ): Promise<any> {
+    try {
+      return await this.incidentService.getDashboardStats(userParentCategory);
+    } catch (error) {
+      throw error;
+    }
+  }
+
   @Get('view-team-incidents/:teamId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')

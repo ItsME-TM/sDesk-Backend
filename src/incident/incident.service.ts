@@ -365,6 +365,59 @@ export class IncidentService {
     }
   }
 
+async getDashboardStats(userParentCategory?: string): Promise<any> {
+    try {
+      const incidents = await this.incidentRepository.find();
+      
+      const filteredIncidents = userParentCategory 
+        ? incidents.filter(inc => inc.category && inc.category.includes(userParentCategory))
+        : incidents;
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const statusCounts = {
+        'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
+        'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
+        'In Progress': filteredIncidents.filter(inc => inc.status === 'In Progress').length,
+        'Closed': filteredIncidents.filter(inc => inc.status === 'Closed').length,
+      };
+
+      const priorityCounts = {
+        'Medium': filteredIncidents.filter(inc => inc.priority === 'Medium').length,
+        'High': filteredIncidents.filter(inc => inc.priority === 'High').length,
+        'Critical': filteredIncidents.filter(inc => inc.priority === 'Critical').length,
+      };
+
+      const todayStats = {
+        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
+        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+      };
+
+      // Also include overall counts for comparison
+      const overallStatusCounts = {
+        'Open': incidents.filter(inc => inc.status === 'Open').length,
+        'Hold': incidents.filter(inc => inc.status === 'Hold').length,
+        'In Progress': incidents.filter(inc => inc.status === 'In Progress').length,
+        'Closed': incidents.filter(inc => inc.status === 'Closed').length,
+        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
+        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+      };
+
+      return {
+        statusCounts,
+        priorityCounts,
+        todayStats,
+        overallStatusCounts,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(
+        'Failed to retrieve dashboard stats: ' + message,
+      );
+    }
+  }
+
+
   async getIncidentHistory(
     incident_number: string,
   ): Promise<IncidentHistory[]> {
