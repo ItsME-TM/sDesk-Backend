@@ -208,27 +208,17 @@ export class CategoryService {
   ): Promise<CategoryItem> {
     const { subCategoryId, name, ...categoryItemData } = createCategoryItemDto;
 
-    // LOG: Debug incoming payload and subcategory lookup
-    // eslint-disable-next-line no-console
-    console.log('createCategoryItemDto:', createCategoryItemDto);
-
     let subCategoryIdToUse = subCategoryId;
     if (!subCategoryIdToUse && (categoryItemData as any).subCategory) {
       subCategoryIdToUse = (categoryItemData as any).subCategory;
     }
     if (!subCategoryIdToUse) {
-      // eslint-disable-next-line no-console
-      console.log('No subCategoryId provided');
       throw new NotFoundException('subCategoryId is required');
     }
     const subCategory = await this.subCategoryRepository.findOne({
       where: { id: subCategoryIdToUse },
     });
-    // eslint-disable-next-line no-console
-    console.log('subCategory lookup result:', subCategory);
     if (!subCategory) {
-      // eslint-disable-next-line no-console
-      console.log(`Sub category with ID ${subCategoryIdToUse} not found`);
       throw new NotFoundException(
         `Sub category with ID ${subCategoryIdToUse} not found`,
       );
@@ -236,22 +226,12 @@ export class CategoryService {
 
     // Check for duplicate category item name under the same sub category (case-insensitive, trimmed)
     const nameToCheck = name.trim().toLowerCase();
-    // Use the correct FK column for duplicate check
     const existing = await this.categoryItemRepository
       .createQueryBuilder('categoryItem')
       .where('LOWER(TRIM(categoryItem.name)) = :name', { name: nameToCheck })
       .andWhere('categoryItem.subCategoryId = :subCategoryId', { subCategoryId: subCategoryIdToUse })
       .getOne();
-    // Extra logging for debugging
-    console.log('Checking for duplicate with name:', nameToCheck, 'and subCategoryId:', subCategoryIdToUse);
     if (existing) {
-      console.log('Duplicate found:', existing);
-    }
-    // eslint-disable-next-line no-console
-    console.log('Duplicate check result:', existing);
-    if (existing) {
-      // eslint-disable-next-line no-console
-      console.log(`Duplicate category item name '${name}' under subCategoryId ${subCategoryIdToUse}`);
       throw new Error(`Category item with name '${name}' already exists under this sub category`);
     }
 
@@ -265,14 +245,10 @@ export class CategoryService {
     });
     categoryItem.subCategory = subCategory; // assign the loaded entity after create
 
-    // Extra logging for debugging
-    console.log('About to save new categoryItem:', JSON.stringify(categoryItem, null, 2));
     try {
       const saved = await this.categoryItemRepository.save(categoryItem);
-      console.log('Successfully saved categoryItem:', JSON.stringify(saved, null, 2));
       return saved;
     } catch (err) {
-      console.error('Error saving categoryItem:', err);
       throw err;
     }
   }
