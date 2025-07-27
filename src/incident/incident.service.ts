@@ -12,6 +12,7 @@ import { INCIDENT_REQUIRED_FIELDS } from './incident.interface';
 import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
+import { SLTUser } from '../sltusers/entities/sltuser.entity';
 
 @Injectable()
 export class IncidentService {
@@ -24,7 +25,25 @@ export class IncidentService {
     private incidentHistoryRepository: Repository<IncidentHistory>,
     @InjectRepository(CategoryItem)
     private categoryItemRepository: Repository<CategoryItem>,
+    @InjectRepository(SLTUser)
+    private sltUserRepository: Repository<SLTUser>,
   ) {}
+
+  // Helper method to get display_name from slt_users table by serviceNum
+  private async getDisplayNameByServiceNum(serviceNum: string): Promise<string> {
+    if (!serviceNum) return serviceNum;
+    
+    try {
+      const user = await this.sltUserRepository.findOne({
+        where: { serviceNum: serviceNum }
+      });
+      return user ? user.display_name : serviceNum;
+    } catch (error) {
+      // If there's an error fetching user, return the serviceNum as fallback
+      console.warn(`Failed to fetch display_name for serviceNum ${serviceNum}:`, error);
+      return serviceNum;
+    }
+  }
 
   async create(incidentDto: IncidentDto): Promise<Incident> {
     try {
@@ -113,12 +132,16 @@ export class IncidentService {
 
       const savedIncident = await this.incidentRepository.save(incident);
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+
       // Create initial incident history entry
       const initialHistory = this.incidentHistoryRepository.create({
         incidentNumber: savedIncident.incident_number,
         status: savedIncident.status,
-        assignedTo: savedIncident.handler,
-        updatedBy: savedIncident.informant, // Assuming informant is the initial creator/reporter
+        assignedTo: assignedToDisplayName,
+        updatedBy: updatedByDisplayName, // Assuming informant is the initial creator/reporter
         comments: incidentDto.description, // The description from the initial incident creation
         category: savedIncident.category,
         location: savedIncident.location,
@@ -315,12 +338,16 @@ export class IncidentService {
         }
       }
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
+
       // --- IncidentHistory entry ---
       const history = this.incidentHistoryRepository.create({
         incidentNumber: incident_number,
         status: incidentDto.status || incident.status,
-        assignedTo: incidentDto.handler || incident.handler,
-        updatedBy: incidentDto.update_by || incident.update_by,
+        assignedTo: assignedToDisplayName,
+        updatedBy: updatedByDisplayName,
         comments: incidentDto.description || incident.description,
         category: incidentDto.category || incident.category,
         location: incidentDto.location || incident.location,
@@ -427,4 +454,3 @@ async getDashboardStats(userParentCategory?: string): Promise<any> {
     });
   }
 }
-
