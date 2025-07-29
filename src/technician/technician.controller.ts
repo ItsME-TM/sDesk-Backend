@@ -83,7 +83,15 @@ export class TechnicianController {
     }
   }
 
- 
+@Get('check-status')
+async checkStatus() {
+  try {
+    return await this.technicianService.checkTechnicianStatus();
+  } catch (error) {
+    console.error('Error fetching technician status:', error.message);
+    throw new HttpException('Unable to fetch technician status', HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+}
 
   @Get('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)

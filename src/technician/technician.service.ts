@@ -77,11 +77,7 @@ export class TechnicianService {
     }
   }
 
-  // Get technician's active status
-  async isTechnicianActive(serviceNum: string): Promise<boolean> {
-    const technician = await this.findOneTechnician(serviceNum);
-    return technician.active;
-  }
+
 
 async updateTechnicianActive(serviceNum: string, active: boolean): Promise<void> {
   console.log(`[TechnicianService] Updating active status for ${serviceNum} to ${active}`);
@@ -97,5 +93,14 @@ async findActiveTechnicians(): Promise<Technician[]> {
   return this.technicianRepo.find({ where: { active: true } });
 }
 
+ async checkTechnicianStatus(): Promise<{ serviceNum: string; active: string }[]> {
+  try {
+    const all = await this.technicianRepo.find();
+    return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
+  } catch (error) {
+    console.error('Error in checkTechnicianStatus:', error.message);
+    throw new Error('Failed to retrieve technician status');
+  }
+}
 
 }
