@@ -16,6 +16,7 @@ interface DecodedIdToken {
   [key: string]: unknown;
 }
 import { SLTUsersService } from '../sltusers/sltusers.service';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -32,6 +33,7 @@ export class AuthService {
   constructor(
     private configService: ConfigService,
     private readonly sltUsersService: SLTUsersService,
+    private readonly websocketGateway: WebsocketGateway,
   ) {}
 
   private getStringFromDecoded(
@@ -172,6 +174,12 @@ export class AuthService {
           serviceNum: user.serviceNum,
           contactNumber: user.contactNumber,
         });
+
+        // Emit WebSocket event for technician status change
+        if (user.role === 'technician' && user.serviceNum) {
+          this.websocketGateway.emitTechnicianStatusChange(user.serviceNum, true);
+        }
+
         return {
           accessToken,
           refreshToken,
@@ -293,4 +301,3 @@ export class AuthService {
     }
   }
 }
-

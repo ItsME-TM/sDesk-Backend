@@ -5,6 +5,7 @@ import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { verify } from 'jsonwebtoken';
 import { TeamAdminService } from '../teamadmin/teamadmin.service';
 import { TechnicianService } from '../technician/technician.service';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { User } from './interface/auth.interface';
 import { UserPayload } from './interface/user-payload.interface';
 
@@ -14,6 +15,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly teamAdminService: TeamAdminService,
     private readonly technicianService: TechnicianService,
+    private readonly websocketGateway: WebsocketGateway,
   ) {}
 
   @Post('login')
@@ -93,6 +95,7 @@ export class AuthController {
             console.log(
               `[Logout] Technician ${payload.serviceNum} marked as inactive`,
             );
+            this.websocketGateway.emitTechnicianStatusChange(payload.serviceNum, false);
           }
         } catch (e) {
           console.warn('[Logout] Failed to decode token:', e.message);
