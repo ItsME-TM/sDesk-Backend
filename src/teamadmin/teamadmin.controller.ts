@@ -32,17 +32,9 @@ export class TeamAdminController {
     @Body() teamAdminDto: TeamAdminDto,
   ): Promise<TeamAdmin> {
     try {
-      this.logger.log(
-        `TeamAdminController - createTeamAdmin: Received request to create a new team admin for teamId: ${teamId}`,
-      );
       return await this.teamAdminService.createTeamAdmin(teamAdminDto, teamId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminController - createTeamAdmin: Failed to create team admin: ${message}`,
-        stack,
-      );
       throw new HttpException(
         `Failed to create team admin: ${message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -58,20 +50,12 @@ export class TeamAdminController {
     @Body() teamAdminDto: TeamAdminDto,
   ): Promise<TeamAdmin> {
     try {
-      this.logger.log(
-        `TeamAdminController - updateTeamAdminByTeamId: Attempting to update team admin with teamId: ${id}`,
-      );
       return await this.teamAdminService.updateTeamAdminByTeamId(
         id,
         teamAdminDto,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminController - updateTeamAdminByTeamId: Failed to update team admin: ${message}`,
-        stack,
-      );
       if (error instanceof HttpException) {
         throw error;
       }
@@ -87,20 +71,12 @@ export class TeamAdminController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deleteTeamAdminByTeamId(@Param('id') id: string) {
     try {
-      this.logger.log(
-        `TeamAdminController - deleteTeamAdminByTeamId: Attempting to delete team admin with teamId: ${id}`,
-      );
       await this.teamAdminService.removeTeamAdminByTeamId(id);
       return {
         message: `Team admin with teamId ${id} successfully deleted`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminController - deleteTeamAdminByTeamId: Failed to delete team admin: ${message}`,
-        stack,
-      );
       if (error instanceof HttpException) {
         throw error;
       }
@@ -116,17 +92,9 @@ export class TeamAdminController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAllTeamAdmins(): Promise<TeamAdmin[]> {
     try {
-      this.logger.log(
-        'TeamAdminController - getAllTeamAdmins: Received request to get all team admins',
-      );
       return await this.teamAdminService.findAllTeamAdmins();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminController - getAllTeamAdmins: Failed to retrieve team admins: ${message}`,
-        stack,
-      );
       throw new HttpException(
         `Failed to retrieve team admins: ${message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -141,9 +109,6 @@ export class TeamAdminController {
     @Param('serviceNumber') serviceNumber: string,
   ): Promise<TeamAdmin> {
     try {
-      this.logger.log(
-        `TeamAdminController - getTeamAdminByServiceNumber: Received request to get team admin by serviceNumber: ${serviceNumber}`,
-      );
       const admin =
         await this.teamAdminService.findTeamAdminByServiceNumber(serviceNumber);
       if (!admin) {
@@ -155,11 +120,6 @@ export class TeamAdminController {
       return admin;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminController - getTeamAdminByServiceNumber: Failed to retrieve team admin: ${message}`,
-        stack,
-      );
       if (error instanceof HttpException) {
         throw error;
       }

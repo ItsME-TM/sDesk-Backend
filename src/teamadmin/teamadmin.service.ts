@@ -31,11 +31,6 @@ export class TeamAdminService {
       return await this.teamAdminRepository.save(teamAdmin);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - createTeamAdmin: Failed to create team admin: ${message}`,
-        stack,
-      );
       throw new InternalServerErrorException(
         `Failed to create team admin: ${message}`,
       );
@@ -55,11 +50,6 @@ export class TeamAdminService {
       return await this.teamAdminRepository.save(teamAdmin);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - updateTeamAdminByTeamId: Failed to update team admin with teamId ${id}: ${message}`,
-        stack,
-      );
       if (error instanceof NotFoundException) {
         throw error;
       }
@@ -83,11 +73,6 @@ export class TeamAdminService {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - removeTeamAdminByTeamId: Error removing team admin with teamId ${id}: ${message}`,
-        stack,
-      );
       if (error instanceof NotFoundException) {
         throw error;
       }
@@ -102,11 +87,6 @@ export class TeamAdminService {
       return await this.teamAdminRepository.find();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - findAllTeamAdmins: Failed to retrieve all team admins: ${message}`,
-        stack,
-      );
       throw new InternalServerErrorException(
         `Failed to retrieve team admins: ${message}`,
       );
@@ -118,11 +98,6 @@ export class TeamAdminService {
       return await this.teamAdminRepository.findOne({ where: { teamId } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - findTeamAdminByTeamId: Failed to find team admin by teamId ${teamId}: ${message}`,
-        stack,
-      );
       throw new InternalServerErrorException(
         `Failed to find team admin by teamId ${teamId}: ${message}`,
       );
@@ -138,11 +113,6 @@ export class TeamAdminService {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(
-        `TeamAdminService - findTeamAdminByServiceNumber: Failed to find team admin by serviceNumber ${serviceNumber}: ${message}`,
-        stack,
-      );
       throw new InternalServerErrorException(
         `Failed to find team admin by serviceNumber ${serviceNumber}: ${message}`,
       );
