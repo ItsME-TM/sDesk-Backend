@@ -35,9 +35,6 @@ export class AuthController {
           body.state,
           body.redirect_uri,
         );
-      console.log('[AuthController] Microsoft login successful:', user);
-      console.log('[AuthController] Access Token:', accessToken);
-      console.log('[AuthController] Refresh Token:', refreshToken);
 
       // ✅ Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
@@ -66,7 +63,6 @@ export class AuthController {
 
       return { success: true, user, accessToken };
     } catch (error) {
-      console.error('[AuthController] Login error:', error);
       return { success: false, message: 'Login failed' };
     }
   }
@@ -92,13 +88,9 @@ export class AuthController {
               payload.serviceNum,
               false,
             );
-            console.log(
-              `[Logout] Technician ${payload.serviceNum} marked as inactive`,
-            );
             this.websocketGateway.emitTechnicianStatusChange(payload.serviceNum, false);
           }
         } catch (e) {
-          console.warn('[Logout] Failed to decode token:', e.message);
         }
       }
 
@@ -121,7 +113,6 @@ export class AuthController {
 
       return { success: true, message: 'Logged out successfully' };
     } catch (error) {
-      console.error('[AuthController] Logout error:', error);
       return { success: false, message: 'Logout failed' };
     }
   }
@@ -139,7 +130,6 @@ export class AuthController {
           secure: true,
           sameSite: 'none',
         });
-        console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
       }
 
@@ -151,7 +141,6 @@ export class AuthController {
         maxAge: 60 * 60 * 1000,
       });
 
-      console.log('[AuthController] New access token generated:', accessToken);
       return { success: true, accessToken };
     } catch (error) {
       res.clearCookie('jwt', {
@@ -165,7 +154,6 @@ export class AuthController {
         sameSite: 'none',
         path: '/auth/refresh-token',
       });
-      console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };
     }
   }
@@ -192,7 +180,6 @@ export class AuthController {
         token,
         process.env.JWT_SECRET || 'your-secret-key',
       ) as UserPayload;
-      console.log('[AuthController] Logged user payload:', payload);
 
       if (payload.role === 'admin' && payload.serviceNum) {
         const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
@@ -230,20 +217,12 @@ export class AuthController {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          console.error(
-            '[AuthController] Get logged user error: Token expired',
-          );
           return { success: false, message: 'Token expired' };
         }
         if (error.name === 'JsonWebTokenError') {
-          console.error(
-            '[AuthController] Get logged user error: Invalid token',
-          );
           return { success: false, message: 'Invalid token' };
         }
       }
-
-      console.error('[AuthController] Get logged user error:', error);
       return { success: false, message: 'Token verification failed' };
     }
   }

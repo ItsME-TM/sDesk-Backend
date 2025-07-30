@@ -70,17 +70,9 @@ export class AuthService {
     redirect_uri: string,
   ): Promise<{ accessToken: string; refreshToken: string; user: User }> {
     try {
-      console.log('[AuthService] handleMicrosoftLogin called', {
-        code,
-        state,
-        redirect_uri,
-      });
       if (state !== '12345') {
-        console.warn('[AuthService] Invalid state received:', state);
         throw new BadRequestException('Invalid state');
       }
-
-      console.log('[AuthService] Requesting Microsoft token...');
       const tokenResponse = await axios.post<MicrosoftTokenResponse>(
         `https://login.microsoftonline.com/${this.configService.get('AZURE_TENANT_ID')}/oauth2/v2.0/token`,
         new URLSearchParams({
@@ -92,7 +84,6 @@ export class AuthService {
         }).toString(),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
       );
-      console.log('[AuthService] Received token response:', tokenResponse.data);
 
       const id_token: string | undefined = (
         tokenResponse.data as { id_token?: string }
@@ -122,29 +113,22 @@ export class AuthService {
               ? data.businessPhones[0]
               : undefined);
 
-          console.log('[AuthService] Graph API contactNumber:', contactNumber);
         } catch (e: any) {
           let errMsg = e;
           if (e && typeof e === 'object' && 'message' in e) {
             errMsg = (e as { message: string }).message;
           }
-          console.warn(
-            '[AuthService] Could not fetch contact number from Graph API:',
-            errMsg,
-          );
         }
       }
 
       if (id_token) {
         const decodedIdToken = decode(id_token) as DecodedIdToken;
-        console.log('[AuthService] Decoded id_token:', decodedIdToken);
         const azureId = this.getStringFromDecoded(decodedIdToken, 'oid');
         const email = this.getStringFromDecoded(
           decodedIdToken,
           'preferred_username',
         );
         const name = this.getStringFromDecoded(decodedIdToken, 'name');
-        console.log('userPrincipalName:', email);
         let serviceNum = '';
         if (email && typeof email === 'string') {
           serviceNum = email.split('@')[0];
@@ -166,14 +150,6 @@ export class AuthService {
         }
         if (!user) throw new UnauthorizedException('User creation failed');
         const { accessToken, refreshToken } = this.generateTokens(user);
-        console.log('User details: ', {
-          id: user.id,
-          email: user.email,
-          name: user.display_name,
-          role: user.role,
-          serviceNum: user.serviceNum,
-          contactNumber: user.contactNumber,
-        });
 
         // Emit WebSocket event for technician status change
         if (user.role === 'technician' && user.serviceNum) {
@@ -195,7 +171,6 @@ export class AuthService {
       }
       throw new UnauthorizedException('No id_token received from Microsoft.');
     } catch (error) {
-      console.error('[AuthService] handleMicrosoftLogin error:', error);
       if (axios.isAxiosError(error)) {
         let errorMsg: string = error.message;
         const data: unknown = error.response?.data;
@@ -241,12 +216,8 @@ export class AuthService {
         this.configService.get<string>('JWT_SECRET', 'your-secret-key'),
         { expiresIn: '15m' },
       );
-      console.log('[AuthService] refreshJwtToken generated access token:', {
-        accessToken,
-      });
       return typeof accessToken === 'string' ? accessToken : '';
     } catch (error) {
-      console.error('[AuthService] refreshJwtToken error:', error);
       if (error instanceof UnauthorizedException) {
         throw error;
       }
@@ -278,22 +249,14 @@ export class AuthService {
         ) {
           const errorName = (error as { name: string }).name;
           if (errorName === 'TokenExpiredError') {
-            console.error(
-              '[AuthService] getUserFromAccessToken error: Token expired',
-            );
             throw new UnauthorizedException('Token expired');
           } else if (errorName === 'JsonWebTokenError') {
-            console.error(
-              '[AuthService] getUserFromAccessToken error: Invalid token',
-            );
             throw new UnauthorizedException('Invalid token');
           }
         }
-        console.error('[AuthService] getUserFromAccessToken error:', error);
         throw new UnauthorizedException('Token verification failed');
       }
     } catch (error) {
-      console.error('[AuthService] getUserFromAccessToken error:', error);
       if (error instanceof UnauthorizedException) {
         throw error;
       }
