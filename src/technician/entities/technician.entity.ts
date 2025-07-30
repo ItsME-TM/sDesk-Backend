@@ -47,7 +47,7 @@ serviceNum: string;
   level: string;
 
   @Column()
-  teamLevel: string;
+  teamId: string;
 
   @Column()
   designation: string;
