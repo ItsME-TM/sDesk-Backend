@@ -62,7 +62,7 @@ export class AuthController {
       });
 
       return { success: true, user, accessToken };
-    } catch (error) {
+    } catch {
       return { success: false, message: 'Login failed' };
     }
   }
@@ -74,9 +74,8 @@ export class AuthController {
   ): Promise<{ success: boolean; message: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
-
-      // ✅ Technician active update
       const token = req.cookies?.jwt;
+      // Technician active update
       if (token) {
         try {
           const payload = verify(
@@ -88,31 +87,59 @@ export class AuthController {
               payload.serviceNum,
               false,
             );
-            this.websocketGateway.emitTechnicianStatusChange(payload.serviceNum, false);
+            this.websocketGateway.emitTechnicianStatusChange(
+              payload.serviceNum,
+              false,
+            );
           }
         } catch (e) {
+          return {
+            success: false,
+            message: `Technician status update error: ${e instanceof Error ? e.message : e}`,
+          };
         }
       }
 
-      if (refreshToken) {
-        this.authService.revokeRefreshToken(refreshToken);
+      if (typeof refreshToken === 'string') {
+        try {
+          this.authService.revokeRefreshToken(refreshToken);
+        } catch (e) {
+          return {
+            success: false,
+            message: `Refresh token revoke error: ${e instanceof Error ? e.message : e}`,
+          };
+        }
       }
 
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/auth/refresh-token',
-      });
+      try {
+        res.clearCookie('refreshToken', {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          path: '/auth/refresh-token',
+        });
+      } catch (e) {
+        return {
+          success: false,
+          message: `Clear refreshToken cookie error: ${e instanceof Error ? e.message : e}`,
+        };
+      }
 
-      res.clearCookie('jwt', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-      });
+      try {
+        res.clearCookie('jwt', {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+        });
+      } catch (e) {
+        return {
+          success: false,
+          message: `Clear jwt cookie error: ${e instanceof Error ? e.message : e}`,
+        };
+      }
 
       return { success: true, message: 'Logged out successfully' };
-    } catch (error) {
+    } catch {
       return { success: false, message: 'Logout failed' };
     }
   }
@@ -124,11 +151,12 @@ export class AuthController {
   ): Promise<{ success: boolean; accessToken?: string; message?: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
-      if (!refreshToken) {
+      if (typeof refreshToken !== 'string') {
         res.clearCookie('jwt', {
           httpOnly: true,
           secure: true,
           sameSite: 'none',
+          path: '/auth/refresh-token',
         });
         return { success: false, message: 'No refresh token provided' };
       }
@@ -142,7 +170,7 @@ export class AuthController {
       });
 
       return { success: true, accessToken };
-    } catch (error) {
+    } catch {
       res.clearCookie('jwt', {
         httpOnly: true,
         secure: true,
