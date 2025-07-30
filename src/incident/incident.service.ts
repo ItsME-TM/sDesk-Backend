@@ -12,6 +12,7 @@ import { INCIDENT_REQUIRED_FIELDS } from './incident.interface';
 import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
+import { SLTUser } from '../sltusers/entities/sltuser.entity';
 
 @Injectable()
 export class IncidentService {
@@ -24,7 +25,22 @@ export class IncidentService {
     private incidentHistoryRepository: Repository<IncidentHistory>,
     @InjectRepository(CategoryItem)
     private categoryItemRepository: Repository<CategoryItem>,
+    @InjectRepository(SLTUser)
+    private sltUserRepository: Repository<SLTUser>,
   ) {}
+
+  // Helper method to get display_name from slt_users table by serviceNum
+  private async getDisplayNameByServiceNum(serviceNum: string): Promise<string> {
+    if (!serviceNum) return serviceNum;
+    try {
+      const user = await this.sltUserRepository.findOne({
+        where: { serviceNum: serviceNum }
+      });
+      return user ? user.display_name : serviceNum;
+    } catch (error) {
+      return serviceNum;
+    }
+  }
 
   async create(incidentDto: IncidentDto): Promise<Incident> {
     try {
@@ -65,16 +81,8 @@ export class IncidentService {
         );
       }
 
-      console.log(
-        `🔍 Found team ID: ${mainCategoryId} for category: ${incidentDto.category}`,
-      );
-      console.log(
-        `🔍 Team ID type: ${typeof mainCategoryId}, value: '${mainCategoryId}'`,
-      );
-
       // Step 3: Get the team name from mainCategory
       const teamName = categoryItem.subCategory?.mainCategory?.name;
-      console.log(`  Team name: ${teamName}`);
 
       // Step 4: Try to find technician by all possible combinations (deep robust search)
       let assignedTechnician: Technician | null = null;
@@ -101,9 +109,7 @@ export class IncidentService {
         );
       }
 
-      console.log(
-        `✅ Assigning technician: ${assignedTechnician.serviceNum} (${assignedTechnician.name}) to incident: ${incidentNumber}`,
-      );
+      // Technician assignment complete
 
       const incident = this.incidentRepository.create({
         ...incidentDto,
@@ -113,12 +119,16 @@ export class IncidentService {
 
       const savedIncident = await this.incidentRepository.save(incident);
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+
       // Create initial incident history entry
       const initialHistory = this.incidentHistoryRepository.create({
         incidentNumber: savedIncident.incident_number,
         status: savedIncident.status,
-        assignedTo: savedIncident.handler,
-        updatedBy: savedIncident.informant, // Assuming informant is the initial creator/reporter
+        assignedTo: assignedToDisplayName,
+        updatedBy: updatedByDisplayName, // Assuming informant is the initial creator/reporter
         comments: incidentDto.description, // The description from the initial incident creation
         category: savedIncident.category,
         location: savedIncident.location,
@@ -155,9 +165,6 @@ export class IncidentService {
     }
   }
   async getAssignedByMe(informant: string): Promise<Incident[]> {
-    console.log(
-      `🔍 Incident Service: getAssignedByMe called with informant: ${informant}`,
-    );
 
     try {
       if (!informant) {
@@ -165,14 +172,10 @@ export class IncidentService {
       }
 
       const trimmedInformant = informant.trim();
-      console.log(
-        `🔍 Incident Service: Searching for informant '${trimmedInformant}'`,
-      );
 
       // First, clean up any existing data with whitespace issues
       await this.cleanupInformantWhitespace();
 
-      console.log('🔍 Incident Service: About to execute database query...');
 
       // Use LIKE with trimmed spaces to handle potential whitespace issues
       const incidents = await this.incidentRepository
@@ -182,14 +185,9 @@ export class IncidentService {
         })
         .getMany();
 
-      console.log(
-        `✅ Incident Service: Found ${incidents.length} incidents for informant '${trimmedInformant}'`,
-      );
-      console.log('✅ Incident Service: Incidents found:', incidents);
 
       return incidents;
     } catch (error) {
-      console.error('❌ Incident Service: Error in getAssignedByMe:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -209,9 +207,6 @@ export class IncidentService {
       for (const incident of incidents) {
         const trimmedInformant = incident.informant?.trim();
         if (incident.informant !== trimmedInformant) {
-          console.log(
-            `Cleaning informant: '${incident.informant}' -> '${trimmedInformant}'`,
-          );
           incident.informant = trimmedInformant;
           updates.push(this.incidentRepository.save(incident));
         }
@@ -219,12 +214,9 @@ export class IncidentService {
 
       if (updates.length > 0) {
         await Promise.all(updates);
-        console.log(
-          `Cleaned up ${updates.length} incidents with whitespace issues`,
-        );
       }
     } catch (error) {
-      console.error('Error cleaning up informant whitespace:', error);
+      // Silent fail for cleanup
     }
   }
 
@@ -315,12 +307,16 @@ export class IncidentService {
         }
       }
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
+
       // --- IncidentHistory entry ---
       const history = this.incidentHistoryRepository.create({
         incidentNumber: incident_number,
         status: incidentDto.status || incident.status,
-        assignedTo: incidentDto.handler || incident.handler,
-        updatedBy: incidentDto.update_by || incident.update_by,
+        assignedTo: assignedToDisplayName,
+        updatedBy: updatedByDisplayName,
         comments: incidentDto.description || incident.description,
         category: incidentDto.category || incident.category,
         location: incidentDto.location || incident.location,
@@ -427,4 +423,3 @@ async getDashboardStats(userParentCategory?: string): Promise<any> {
     });
   }
 }
-

@@ -22,6 +22,7 @@ import { Technician } from './technician/entities/technician.entity';
 import { Location } from './location/entities/location.entity';
 import { TechnicianModule } from './technician/technician.module';
 import { LocationModule } from './location/location.module';
+import { WebsocketModule } from './websocket/websocket.module';
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ dotenv.config();
     SLTUsersModule,
     TechnicianModule,
     LocationModule,
+    WebsocketModule,
   ],
   controllers: [AppController],
   providers: [AppService],

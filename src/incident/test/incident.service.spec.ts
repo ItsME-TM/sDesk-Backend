@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { IncidentService } from '../incident.service';
 import { Incident } from '../entities/incident.entity';
 import { IncidentDto } from '../dto/incident.dto';
+import { IncidentHistory } from '../entities/incident-history.entity';
+import { Technician } from '../../technician/entities/technician.entity';
+import { CategoryItem } from '../../Categories/Entities/Categories.entity';
+import { SLTUser } from '../../sltusers/entities/sltuser.entity';
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -58,6 +62,22 @@ describe('IncidentService', () => {
         IncidentService,
         {
           provide: getRepositoryToken(Incident),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(IncidentHistory),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(Technician),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(CategoryItem),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(SLTUser),
           useValue: mockRepository,
         },
       ],
