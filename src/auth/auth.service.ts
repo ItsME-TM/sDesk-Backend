@@ -112,12 +112,17 @@ export class AuthService {
             (Array.isArray(data.businessPhones)
               ? data.businessPhones[0]
               : undefined);
-
         } catch (e: any) {
-          let errMsg = e;
+          let errMsg = 'Unknown error';
           if (e && typeof e === 'object' && 'message' in e) {
             errMsg = (e as { message: string }).message;
+          } else if (typeof e === 'string') {
+            errMsg = e;
           }
+          throw new UnauthorizedException(
+            'Failed to fetch contact number from Microsoft Graph API: ' +
+              errMsg,
+          );
         }
       }
 
@@ -153,7 +158,10 @@ export class AuthService {
 
         // Emit WebSocket event for technician status change
         if (user.role === 'technician' && user.serviceNum) {
-          this.websocketGateway.emitTechnicianStatusChange(user.serviceNum, true);
+          this.websocketGateway.emitTechnicianStatusChange(
+            user.serviceNum,
+            true,
+          );
         }
 
         return {
