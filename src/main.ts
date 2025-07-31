@@ -3,7 +3,19 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
+
+// Define the expected user data structure
+interface UserData {
+  serviceNum: string;
+  role: string;
+}
+
+// Extend the Socket type to include custom properties
+interface CustomSocket extends Socket {
+  userId?: string;
+  userRole?: string;
+}
 
 // Global socket instance (we'll improve this architecture later)
 let io: Server;
@@ -12,7 +24,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
-
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
     'http://localhost:3000',
@@ -20,26 +31,7 @@ async function bootstrap() {
     'https://localhost:3000',
     'https://localhost:5173',
   ];
-
-  console.log('🔧 CORS Configuration:');
-  console.log('🌍 Environment:', process.env.NODE_ENV);
-  console.log('🔗 Allowed Origins:', allowedOrigins);
-
   app.use((req: Request, res: Response, next: NextFunction) => {
-    console.log(
-      `🌐 ${req.method} ${req.url} from origin: ${req.headers.origin || 'no-origin'}`,
-    );
-
-    if (req.method === 'OPTIONS') {
-      console.log('🔍 CORS Preflight Headers:', {
-        'access-control-request-method':
-          req.headers['access-control-request-method'],
-        'access-control-request-headers':
-          req.headers['access-control-request-headers'],
-        origin: req.headers.origin,
-      });
-    }
-
     next();
   });
 
@@ -70,62 +62,33 @@ async function bootstrap() {
     },
   });
 
-  console.log('🔧 Socket.IO server initialized');
-
   await app.init();
-
   const port = Number(process.env.PORT) || 8000; // Convert to number
   httpServer.listen(port, '0.0.0.0', () => {
-    console.log(`Application is running on: http://localhost:${port}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`CORS Configuration is active`);
-    console.log(`Socket.IO server is running`);
+    // Application started successfully
   });
-
-  io.on('connection', (socket) => {
-    console.log('✅ [SOCKET] Client connected:', socket.id);
-    console.log('📊 [SOCKET] Total connected clients:', io.engine.clientsCount);
-
+  io.on('connection', (socket: CustomSocket) => {
     // Store user info when they connect (for targeted notifications)
-    socket.on('user_connected', (userData: any) => {
-      console.log('👤 [SOCKET] User authenticated:', userData);
-
+    socket.on('user_connected', (userData: UserData) => {
       // Store user data in socket for reference
-      (socket as any).userId = userData.serviceNum;
-      (socket as any).userRole = userData.role;
+      socket.userId = userData.serviceNum;
+      socket.userRole = userData.role;
 
       // Only join user-specific room for targeted notifications
       void socket.join(`user_${userData.serviceNum}`);
-
-      console.log(
-        `👤 [SOCKET] User ${userData.serviceNum} (${userData.role}) joined room: user_${userData.serviceNum}`,
-      );
     });
 
-    socket.on('test_message', (data) => {
-      console.log('📨 [SOCKET] Received test message:', data);
+    socket.on('test_message', () => {
       socket.emit('test_response', { message: 'Hello back from server!' });
-      console.log('📤 [SOCKET] Sent test response to client:', socket.id);
     });
 
     socket.on('disconnect', () => {
-      console.log('❌ [SOCKET] Client disconnected:', socket.id);
-      if ((socket as any).userId) {
-        console.log(`👤 [SOCKET] User ${(socket as any).userId} disconnected`);
-      }
-      console.log(
-        '📊 [SOCKET] Remaining connected clients:',
-        io.engine.clientsCount,
-      );
+      // User disconnected
     });
   });
-
   // Add global socket event listener to monitor all emissions
-  io.engine.on('connection_error', (err) => {
-    console.log('🚨 [SOCKET] Connection error:', err.req);
-    console.log('🚨 [SOCKET] Error code:', err.code);
-    console.log('🚨 [SOCKET] Error message:', err.message);
-    console.log('🚨 [SOCKET] Error context:', err.context);
+  io.engine.on('connection_error', () => {
+    // Handle connection errors silently
   });
 }
 
