@@ -37,7 +37,7 @@ export class TechnicianController {
     @Req() req: Request,
   ): Promise<any> {
     const accessToken = req.cookies?.jwt;
-    console.log('[POST /technician] Access Token from cookie:', accessToken);
+    
 
     let isActive = false;
     let shouldClearCookies = false;
@@ -88,7 +88,7 @@ async checkStatus() {
   try {
     return await this.technicianService.checkTechnicianStatus();
   } catch (error) {
-    console.error('Error fetching technician status:', error.message);
+
     throw new HttpException('Unable to fetch technician status', HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }
@@ -142,21 +142,32 @@ async checkStatus() {
       );
     }
   }
-  @Put('technician/:serviceNum/deactivate')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
-  async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
+ @Put('technician/:serviceNum/deactivate')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
+  try {
     await this.technicianService.updateTechnicianActive(serviceNum, false);
     return { message: 'Technician deactivated' };
-  }
-
-  @Put('technician/:serviceNum/force-logout')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'superAdmin')
-  async forceLogoutTechnician(@Param('serviceNum') serviceNum: string, @Req() req: Request) {
-    // This endpoint will be used by frontend to trigger socket force logout
-    // The actual socket emission will be handled by frontend Redux action
-    await this.technicianService.updateTechnicianActive(serviceNum, false);
-    return { message: 'Technician force logout initiated', serviceNum };
+  } catch (error) {
+   
+    throw new HttpException(
+      { message: 'Failed to deactivate technician', details: error.message || error },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
 }
+  @Put('technician/:serviceNum/force-logout')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'superAdmin')
+async forceLogoutTechnician(@Param('serviceNum') serviceNum: string, @Req() req: Request) {
+  try {
+    await this.technicianService.updateTechnicianActive(serviceNum, false);
+    return { message: 'Technician force logout initiated', serviceNum };
+  } catch (error) {
+    
+    throw new HttpException(
+      { message: 'Failed to force logout technician', details: error.message || error },
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  };}}
