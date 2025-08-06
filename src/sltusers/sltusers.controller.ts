@@ -87,7 +87,6 @@ export class SLTUsersController {
       if (!user) {
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
-      console.log('Updated user:', user);
       return user;
     } catch (error) {
       if (error instanceof HttpException) throw error;

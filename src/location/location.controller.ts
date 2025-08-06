@@ -32,12 +32,10 @@ export class LocationController {
     try {
       return await this.locationService.create(dto);
     } catch (err) {
-      console.error('Create Location Error:', err); // Error log added
       if (err.code === '23505') {
         // Unique constraint violation (Postgres)
         throw new BadRequestException('Location Code must be unique');
       }
-      //console.error('Create Error:', err);
       throw new InternalServerErrorException('Something went wrong');
     }
   }
@@ -50,7 +48,6 @@ export class LocationController {
     try {
       return await this.locationService.findAll();
     } catch (err) {
-      //console.error('FindAll Error:', err);
       throw new InternalServerErrorException('Unable to fetch locations');
     }
   }

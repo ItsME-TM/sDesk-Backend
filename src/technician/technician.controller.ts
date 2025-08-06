@@ -37,7 +37,6 @@ export class TechnicianController {
     @Req() req: Request,
   ): Promise<any> {
     const accessToken = req.cookies?.jwt;
-    console.log('[POST /technician] Access Token from cookie:', accessToken);
 
     let isActive = false;
     let shouldClearCookies = false;
@@ -88,7 +87,6 @@ async checkStatus() {
   try {
     return await this.technicianService.checkTechnicianStatus();
   } catch (error) {
-    console.error('Error fetching technician status:', error.message);
     throw new HttpException('Unable to fetch technician status', HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }
