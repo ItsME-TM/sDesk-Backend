@@ -9,7 +9,7 @@ import { SLTUser } from './entities/sltuser.entity';
 
 @Injectable()
 export class SLTUsersService {
-  [x: string]: any;
+  // Removed index signature with any type; add specific properties or methods if needed
   constructor(
     @InjectRepository(SLTUser)
     private readonly sltUserRepository: Repository<SLTUser>,
@@ -26,8 +26,8 @@ export class SLTUsersService {
     } catch (error) {
       if (
         error instanceof QueryFailedError &&
-        typeof (error as Record<string, any>)?.code === 'string' &&
-        (error as Record<string, any>).code === '23505'
+        typeof (error as unknown as { code?: string })?.code === 'string' &&
+        (error as unknown as { code: string }).code === '23505'
       ) {
         throw new ConflictException(
           'User with this Azure ID or serviceNum already exists',
@@ -37,10 +37,10 @@ export class SLTUsersService {
         typeof error === 'object' &&
         error &&
         'message' in error &&
-        typeof (error as Record<string, unknown>).message === 'string'
+        typeof (error as { message?: string }).message === 'string'
       ) {
         throw new InternalServerErrorException(
-          (error as Record<string, any>).message as string,
+          (error as { message: string }).message,
         );
       }
       throw new InternalServerErrorException('Failed to create user');
@@ -80,7 +80,7 @@ export class SLTUsersService {
   async updateUserRoleById(id: string, role: string): Promise<SLTUser | null> {
     const user = await this.sltUserRepository.findOne({ where: { id } });
     if (!user) return null;
-    user.role = role as any;
+    user.role = role as SLTUser['role'];
     try {
       return await this.sltUserRepository.save(user);
     } catch {
@@ -111,7 +111,7 @@ export class SLTUsersService {
         typeof (error as Record<string, unknown>).message === 'string'
       ) {
         throw new InternalServerErrorException(
-          (error as Record<string, any>).message as string,
+          (error as { message: string }).message,
         );
       }
       throw new InternalServerErrorException('Failed to update user');
@@ -132,7 +132,7 @@ export class SLTUsersService {
         typeof (error as Record<string, unknown>).message === 'string'
       ) {
         throw new InternalServerErrorException(
-          (error as Record<string, any>).message as string,
+          (error as { message: string }).message,
         );
       }
       throw new InternalServerErrorException('Failed to delete user');
