@@ -59,14 +59,14 @@ export class SLTUsersController {
   async createUser(@Body() userData: Partial<SLTUser>): Promise<SLTUser> {
     try {
       return await this.sltUsersService.createUser(userData);
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error &&
         typeof error === 'object' &&
         'message' in error &&
-        typeof (error as Record<string, unknown>).message === 'string'
-          ? ((error as Record<string, any>).message as string)
+        typeof (error as { message?: string }).message === 'string'
+          ? (error as { message: string }).message
           : 'Failed to create user',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
