@@ -30,7 +30,7 @@ export class TechnicianController {
 
   @Post('technician')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async add(
     @Body() dto: CreateTechnicianDto,
     @Res() res: Response,
@@ -67,7 +67,6 @@ export class TechnicianController {
     return res.json(technician);
   }
 
- 
   @Get('technicians')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -82,14 +81,17 @@ export class TechnicianController {
     }
   }
 
-@Get('check-status')
-async checkStatus() {
-  try {
-    return await this.technicianService.checkTechnicianStatus();
-  } catch (error) {
-    throw new HttpException('Unable to fetch technician status', HttpStatus.INTERNAL_SERVER_ERROR);
+  @Get('check-status')
+  async checkStatus() {
+    try {
+      return await this.technicianService.checkTechnicianStatus();
+    } catch (error) {
+      throw new HttpException(
+        'Unable to fetch technician status',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
-}
 
   @Get('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -109,7 +111,7 @@ async checkStatus() {
 
   @Put('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async updateTechnician(
     @Param('serviceNum') serviceNum: string,
     @Body() dto: CreateTechnicianDto,
@@ -126,7 +128,7 @@ async checkStatus() {
 
   @Delete('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async deleteTechnician(
     @Param('serviceNum') serviceNum: string,
   ): Promise<{ message: string }> {
@@ -140,32 +142,41 @@ async checkStatus() {
       );
     }
   }
- @Put('technician/:serviceNum/deactivate')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
-async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
-  try {
-    await this.technicianService.updateTechnicianActive(serviceNum, false);
-    return { message: 'Technician deactivated' };
-  } catch (error) {
-   
-    throw new HttpException(
-      { message: 'Failed to deactivate technician', details: error.message || error },
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+  @Put('technician/:serviceNum/deactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
+    try {
+      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      return { message: 'Technician deactivated' };
+    } catch (error) {
+      throw new HttpException(
+        {
+          message: 'Failed to deactivate technician',
+          details: error.message || error,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  @Put('technician/:serviceNum/force-logout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async forceLogoutTechnician(
+    @Param('serviceNum') serviceNum: string,
+    @Req() req: Request,
+  ) {
+    try {
+      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      return { message: 'Technician force logout initiated', serviceNum };
+    } catch (error) {
+      throw new HttpException(
+        {
+          message: 'Failed to force logout technician',
+          details: error.message || error,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
-  @Put('technician/:serviceNum/force-logout')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin', 'superAdmin')
-async forceLogoutTechnician(@Param('serviceNum') serviceNum: string, @Req() req: Request) {
-  try {
-    await this.technicianService.updateTechnicianActive(serviceNum, false);
-    return { message: 'Technician force logout initiated', serviceNum };
-  } catch (error) {
-    
-    throw new HttpException(
-      { message: 'Failed to force logout technician', details: error.message || error },
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
-  };}}

@@ -22,10 +22,15 @@ import { v4 as uuidv4 } from 'uuid';
 
 const refreshTokensStore = new Map<string, string>();
 interface MicrosoftTokenResponse {
-  id_token?: string;
-  access_token?: string;
+  token_type: string;
+  scope: string;
+  expires_in: number;
+  ext_expires_in: number;
+  access_token: string;
+  id_token: string;
   refresh_token?: string;
-  [key: string]: any;
+  [key: string]: string | number | undefined;
+  // ...existing code...
 }
 
 @Injectable()
@@ -112,7 +117,7 @@ export class AuthService {
             (Array.isArray(data.businessPhones)
               ? data.businessPhones[0]
               : undefined);
-        } catch (e: any) {
+        } catch (e) {
           let errMsg = 'Unknown error';
           if (e && typeof e === 'object' && 'message' in e) {
             errMsg = (e as { message: string }).message;
@@ -248,7 +253,7 @@ export class AuthService {
           this.configService.get<string>('JWT_SECRET', 'your-secret-key'),
         ) as JwtPayload;
         return payload;
-      } catch (error: unknown) {
+      } catch (error) {
         if (
           typeof error === 'object' &&
           error !== null &&
