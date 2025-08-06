@@ -26,7 +26,7 @@ export class TeamAdminController {
 
   @Post('admin/:teamId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async createTeamAdmin(
     @Param('teamId') teamId: string,
     @Body() teamAdminDto: TeamAdminDto,
@@ -44,7 +44,7 @@ export class TeamAdminController {
 
   @Put('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async updateTeamAdminByTeamId(
     @Param('id') id: string,
     @Body() teamAdminDto: TeamAdminDto,
@@ -68,7 +68,7 @@ export class TeamAdminController {
 
   @Delete('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async deleteTeamAdminByTeamId(@Param('id') id: string) {
     try {
       await this.teamAdminService.removeTeamAdminByTeamId(id);

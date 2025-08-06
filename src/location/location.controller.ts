@@ -26,7 +26,7 @@ export class LocationController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Create a new location entry
   async create(@Body() dto: CreateLocationDto) {
     try {
@@ -70,7 +70,7 @@ export class LocationController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Update a location entry by id
   async update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     try {
@@ -83,7 +83,7 @@ export class LocationController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Delete a location entry by id
   async remove(@Param('id') id: string) {
     try {
