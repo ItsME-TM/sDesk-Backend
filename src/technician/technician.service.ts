@@ -80,7 +80,6 @@ export class TechnicianService {
 
 
 async updateTechnicianActive(serviceNum: string, active: boolean): Promise<void> {
- 
   const result = await this.technicianRepo.update({ serviceNum }, { active });
 
   if (result.affected === 0) {
@@ -98,7 +97,6 @@ async findActiveTechnicians(): Promise<Technician[]> {
     const all = await this.technicianRepo.find();
     return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
   } catch (error) {
-    
     throw new Error('Failed to retrieve technician status');
   }
 }

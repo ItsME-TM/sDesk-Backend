@@ -9,7 +9,6 @@ export class WebsocketGateway implements OnModuleInit {
 
   onModuleInit() {
     this.server.on('connection', (socket) => {
-      console.log('Connected:', socket.id);
     });
   }
 
@@ -18,12 +17,9 @@ export class WebsocketGateway implements OnModuleInit {
     @MessageBody() data: { serviceNum: string; role: string; name: string },
     @ConnectedSocket() client: Socket,
   ) {
-    console.log(`User ${data.name} (${data.serviceNum}) connected with role ${data.role}`);
-  
   }
 
   public emitTechnicianStatusChange(serviceNum: string, active: boolean) {
     this.server.emit('technician_status_changed', { serviceNum, active });
-    console.log(`Emitted technician_status_changed for ${serviceNum}: ${active}`);
   }
 }

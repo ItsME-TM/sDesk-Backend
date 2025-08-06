@@ -78,9 +78,7 @@ async function bootstrap() {
       void socket.join(`user_${userData.serviceNum}`);
     });
 
-    socket.on('test_message', () => {
-      socket.emit('test_response', { message: 'Hello back from server!' });
-    });
+    // ...remove test_message handler...
 
     socket.on('disconnect', () => {
       // User disconnected

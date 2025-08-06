@@ -31,7 +31,6 @@ export class LocationService {
       const location = this.locationRepository.create(dto);
       return await this.locationRepository.save(location);
     } catch (error) {
-      console.error('Create Location Service Error:', error); // Error log added
       if (error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Failed to create location');
     }
