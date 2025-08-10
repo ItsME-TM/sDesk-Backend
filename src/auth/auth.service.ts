@@ -16,21 +16,16 @@ interface DecodedIdToken {
   [key: string]: unknown;
 }
 import { SLTUsersService } from '../sltusers/sltusers.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
 import { v4 as uuidv4 } from 'uuid';
 
 const refreshTokensStore = new Map<string, string>();
 interface MicrosoftTokenResponse {
-  token_type: string;
-  scope: string;
-  expires_in: number;
-  ext_expires_in: number;
-  access_token: string;
-  id_token: string;
+  id_token?: string;
+  access_token?: string;
   refresh_token?: string;
-  [key: string]: string | number | undefined;
-  // ...existing code...
+  [key: string]: any;
 }
 
 @Injectable()
@@ -38,7 +33,7 @@ export class AuthService {
   constructor(
     private configService: ConfigService,
     private readonly sltUsersService: SLTUsersService,
-    private readonly websocketGateway: WebsocketGateway,
+   
   ) {}
 
   private getStringFromDecoded(
@@ -160,14 +155,16 @@ export class AuthService {
         }
         if (!user) throw new UnauthorizedException('User creation failed');
         const { accessToken, refreshToken } = this.generateTokens(user);
+        console.log('User details: ', {
+          id: user.id,
+          email: user.email,
+          name: user.display_name,
+          role: user.role,
+          serviceNum: user.serviceNum,
+          contactNumber: user.contactNumber,
+        });
 
-        // Emit WebSocket event for technician status change
-        if (user.role === 'technician' && user.serviceNum) {
-          this.websocketGateway.emitTechnicianStatusChange(
-            user.serviceNum,
-            true,
-          );
-        }
+        
 
         return {
           accessToken,
@@ -253,7 +250,7 @@ export class AuthService {
           this.configService.get<string>('JWT_SECRET', 'your-secret-key'),
         ) as JwtPayload;
         return payload;
-      } catch (error) {
+      } catch (error: unknown) {
         if (
           typeof error === 'object' &&
           error !== null &&
