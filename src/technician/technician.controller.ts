@@ -144,7 +144,7 @@ export class TechnicianController {
   }
   @Put('technician/:serviceNum/deactivate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
     try {
       await this.technicianService.updateTechnicianActive(serviceNum, false);
@@ -161,7 +161,7 @@ export class TechnicianController {
   }
   @Put('technician/:serviceNum/force-logout')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'superAdmin')
   async forceLogoutTechnician(
     @Param('serviceNum') serviceNum: string,
     @Req() req: Request,

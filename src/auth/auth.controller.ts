@@ -5,7 +5,7 @@ import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { verify } from 'jsonwebtoken';
 import { TeamAdminService } from '../teamadmin/teamadmin.service';
 import { TechnicianService } from '../technician/technician.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { emitTechnicianStatusChange } from '../main'; 
 import { User } from './interface/auth.interface';
 import { UserPayload } from './interface/user-payload.interface';
 
@@ -15,7 +15,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly teamAdminService: TeamAdminService,
     private readonly technicianService: TechnicianService,
-    private readonly websocketGateway: WebsocketGateway,
+    
   ) {}
 
   @Post('login')
@@ -36,15 +36,21 @@ export class AuthController {
           body.redirect_uri,
         );
 
-      // ✅ Update technician to active if login was successful
+      //  Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
         await this.technicianService.updateTechnicianActive(
           user.serviceNum,
           true,
         );
-      }
+        
 
-      // ✅ Set refresh token cookie
+      // Emit WebSocket event so all admins update instantly
+      emitTechnicianStatusChange(user.serviceNum, true);
+    
+    }
+
+
+      // Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: true, // Must be true in production
@@ -53,7 +59,7 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      // ✅ Set access token cookie
+      // Set access token cookie
       res.cookie('jwt', accessToken, {
         httpOnly: true,
         secure: true, // Must be true in production
@@ -75,7 +81,7 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refreshToken;
       const token = req.cookies?.jwt;
-      // Technician active update
+    
       if (token) {
         try {
           const payload = verify(
@@ -87,16 +93,18 @@ export class AuthController {
               payload.serviceNum,
               false,
             );
-            this.websocketGateway.emitTechnicianStatusChange(
-              payload.serviceNum,
-              false,
-            );
+            if (payload.role === 'technician' && payload.serviceNum) {
+  await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
+  emitTechnicianStatusChange(payload.serviceNum, false);
+}
+           
           }
         } catch (e) {
           return {
             success: false,
             message: `Technician status update error: ${e instanceof Error ? e.message : e}`,
           };
+          
         }
       }
 
@@ -118,6 +126,7 @@ export class AuthController {
           sameSite: 'none',
           path: '/auth/refresh-token',
         });
+        
       } catch (e) {
         return {
           success: false,
