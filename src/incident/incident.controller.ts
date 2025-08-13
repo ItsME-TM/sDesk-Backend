@@ -7,7 +7,18 @@ import {
   Param,
   UseGuards,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { Response } from 'express';
+import * as fs from 'fs';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
@@ -120,6 +131,73 @@ export class IncidentController {
       throw error;
     }
   }
+  @Put(':incident_number/with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads/incident_attachments',
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = `${uniqueSuffix}-${file.originalname}`;
+        cb(null, filename);
+      },
+    }),
+    limits: {
+      fileSize: 1024 * 1024, // 1MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.'), false);
+      }
+    },
+  }))
+  async updateWithAttachment(
+    @Param('incident_number') incident_number: string,
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // If file is uploaded, add attachment info to the DTO
+      if (file) {
+        incidentDto.attachmentFilename = file.filename;
+        incidentDto.attachmentOriginalName = file.originalname;
+      }
+
+      const updatedIncident = await this.incidentService.update(
+        incident_number,
+        incidentDto,
+      );
+
+      if (io) {
+        const eventData = { incident: updatedIncident };
+        // Emit real-time update
+        io.emit('incidentUpdated', eventData);
+      }
+
+      return updatedIncident;
+    } catch (error) {
+      // If there's an error and a file was uploaded, clean it up
+      if (file && file.path) {
+        try {
+          require('fs').unlinkSync(file.path);
+        } catch (cleanupError) {
+          console.error('Failed to clean up uploaded file:', cleanupError);
+        }
+      }
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException('Failed to update incident: ' + message);
+    }
+  }
+
   @Put(':incident_number')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -270,5 +348,98 @@ export class IncidentController {
     }
 
     return { message: 'Test socket update events emitted successfully' };
+  }
+
+  // File upload configuration
+  private getFileUploadOptions() {
+    return {
+      storage: diskStorage({
+        destination: './uploads/incident_attachments',
+        filename: (req, file, callback) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const fileExtension = extname(file.originalname);
+          callback(null, `${uniqueSuffix}${fileExtension}`);
+        },
+      }),
+      fileFilter: (req, file, callback) => {
+        // Check file type
+        const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+        const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+        
+        if (allowedTypes.includes(fileExtension)) {
+          callback(null, true);
+        } else {
+          callback(new BadRequestException('Only PDF, PNG, JPG, and JPEG files are allowed'), false);
+        }
+      },
+      limits: {
+        fileSize: 1024 * 1024, // 1MB limit
+      },
+    };
+  }
+
+  // Upload attachment endpoint
+  @Post('upload-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('attachment', {
+    storage: diskStorage({
+      destination: './uploads/incident_attachments',
+      filename: (req, file, callback) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const fileExtension = extname(file.originalname);
+        callback(null, `${uniqueSuffix}${fileExtension}`);
+      },
+    }),
+    fileFilter: (req, file, callback) => {
+      const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+      const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+      
+      if (allowedTypes.includes(fileExtension)) {
+        callback(null, true);
+      } else {
+        callback(new BadRequestException('Only PDF, PNG, JPG, and JPEG files are allowed'), false);
+      }
+    },
+    limits: {
+      fileSize: 1024 * 1024, // 1MB limit
+    },
+  }))
+  async uploadAttachment(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    return {
+      success: true,
+      filename: file.filename,
+      originalName: file.originalname,
+      size: file.size,
+      path: file.path,
+    };
+  }
+
+  // Download attachment endpoint
+  @Get('download-attachment/:filename')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async downloadAttachment(@Param('filename') filename: string, @Res() res: Response) {
+    try {
+      const filePath = join(process.cwd(), 'uploads', 'incident_attachments', filename);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new BadRequestException('File not found');
+      }
+
+      // Set appropriate headers for download
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      
+      // Send file
+      res.sendFile(filePath);
+    } catch (error) {
+      throw new BadRequestException('Failed to download file');
+    }
   }
 }
