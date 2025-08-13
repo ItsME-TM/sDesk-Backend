@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 import {
   Injectable,
   BadRequestException,
@@ -13,6 +15,7 @@ import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
+import fileType from 'file-type';
 
 @Injectable()
 export class IncidentService {
@@ -29,12 +32,27 @@ export class IncidentService {
     private sltUserRepository: Repository<SLTUser>,
   ) {}
 
+  // Helper method to detect file type from base64 string
+  private async detectFileTypeFromBase64(base64String: string): Promise<string | undefined> {
+    if (!base64String) return undefined;
+
+    // Extract base64 data (remove data:image/png;base64, prefix if present)
+    const base64Data = base64String.split(';base64,').pop();
+    if (!base64Data) return undefined;
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    const type = await fileType.fromBuffer(buffer);
+    return type?.mime;
+  }
+
   // Helper method to get display_name from slt_users table by serviceNum
-  private async getDisplayNameByServiceNum(serviceNum: string): Promise<string> {
+  private async getDisplayNameByServiceNum(
+    serviceNum: string,
+  ): Promise<string> {
     if (!serviceNum) return serviceNum;
     try {
       const user = await this.sltUserRepository.findOne({
-        where: { serviceNum: serviceNum }
+        where: { serviceNum: serviceNum },
       });
       return user ? user.display_name : serviceNum;
     } catch (error) {
@@ -49,6 +67,29 @@ export class IncidentService {
           throw new BadRequestException(`Missing required field: ${field}`);
         }
       }
+
+      // --- File Type Validation ---
+      if (incidentDto.Attachment) {
+        const detectedMimeType = await this.detectFileTypeFromBase64(incidentDto.Attachment);
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'text/plain',
+        ];
+
+        if (!detectedMimeType || !allowedMimeTypes.includes(detectedMimeType)) {
+          throw new BadRequestException('Invalid attachment file type. Only images, PDFs, and common document formats are allowed.');
+        }
+      }
+      // --- End File Type Validation ---
 
       const sequenceResult = await this.incidentRepository.query(
         "SELECT nextval('incident_number_seq') as value",
@@ -120,8 +161,12 @@ export class IncidentService {
       const savedIncident = await this.incidentRepository.save(incident);
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
-      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(
+        savedIncident.handler,
+      );
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(
+        savedIncident.informant,
+      );
 
       // Create initial incident history entry
       const initialHistory = this.incidentHistoryRepository.create({
@@ -165,7 +210,6 @@ export class IncidentService {
     }
   }
   async getAssignedByMe(informant: string): Promise<Incident[]> {
-
     try {
       if (!informant) {
         throw new BadRequestException('informant is required');
@@ -176,7 +220,6 @@ export class IncidentService {
       // First, clean up any existing data with whitespace issues
       await this.cleanupInformantWhitespace();
 
-
       // Use LIKE with trimmed spaces to handle potential whitespace issues
       const incidents = await this.incidentRepository
         .createQueryBuilder('incident')
@@ -184,7 +227,6 @@ export class IncidentService {
           informant: trimmedInformant,
         })
         .getMany();
-
 
       return incidents;
     } catch (error) {
@@ -308,8 +350,12 @@ export class IncidentService {
       }
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
-      const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(
+        incidentDto.handler || incident.handler,
+      );
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(
+        incidentDto.update_by || incident.update_by,
+      );
 
       // --- IncidentHistory entry ---
       const history = this.incidentHistoryRepository.create({
@@ -361,42 +407,58 @@ export class IncidentService {
     }
   }
 
-async getDashboardStats(userParentCategory?: string): Promise<any> {
+  async getDashboardStats(userParentCategory?: string): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
-      
-      const filteredIncidents = userParentCategory 
-        ? incidents.filter(inc => inc.category && inc.category.includes(userParentCategory))
+
+      const filteredIncidents = userParentCategory
+        ? incidents.filter(
+            (inc) => inc.category && inc.category.includes(userParentCategory),
+          )
         : incidents;
 
       const today = new Date().toISOString().split('T')[0];
 
       const statusCounts = {
-        'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
-        'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
-        'In Progress': filteredIncidents.filter(inc => inc.status === 'In Progress').length,
-        'Closed': filteredIncidents.filter(inc => inc.status === 'Closed').length,
+        Open: filteredIncidents.filter((inc) => inc.status === 'Open').length,
+        Hold: filteredIncidents.filter((inc) => inc.status === 'Hold').length,
+        'In Progress': filteredIncidents.filter(
+          (inc) => inc.status === 'In Progress',
+        ).length,
+        Closed: filteredIncidents.filter((inc) => inc.status === 'Closed')
+          .length,
       };
 
       const priorityCounts = {
-        'Medium': filteredIncidents.filter(inc => inc.priority === 'Medium').length,
-        'High': filteredIncidents.filter(inc => inc.priority === 'High').length,
-        'Critical': filteredIncidents.filter(inc => inc.priority === 'Critical').length,
+        Medium: filteredIncidents.filter((inc) => inc.priority === 'Medium')
+          .length,
+        High: filteredIncidents.filter((inc) => inc.priority === 'High').length,
+        Critical: filteredIncidents.filter((inc) => inc.priority === 'Critical')
+          .length,
       };
 
       const todayStats = {
-        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Open (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'Open' && inc.update_on === today,
+        ).length,
+        'Closed (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'Closed' && inc.update_on === today,
+        ).length,
       };
 
       // Also include overall counts for comparison
       const overallStatusCounts = {
-        'Open': incidents.filter(inc => inc.status === 'Open').length,
-        'Hold': incidents.filter(inc => inc.status === 'Hold').length,
-        'In Progress': incidents.filter(inc => inc.status === 'In Progress').length,
-        'Closed': incidents.filter(inc => inc.status === 'Closed').length,
-        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        Open: incidents.filter((inc) => inc.status === 'Open').length,
+        Hold: incidents.filter((inc) => inc.status === 'Hold').length,
+        'In Progress': incidents.filter((inc) => inc.status === 'In Progress')
+          .length,
+        Closed: incidents.filter((inc) => inc.status === 'Closed').length,
+        'Open (Today)': incidents.filter(
+          (inc) => inc.status === 'Open' && inc.update_on === today,
+        ).length,
+        'Closed (Today)': incidents.filter(
+          (inc) => inc.status === 'Closed' && inc.update_on === today,
+        ).length,
       };
 
       return {
@@ -413,7 +475,6 @@ async getDashboardStats(userParentCategory?: string): Promise<any> {
     }
   }
 
-
   async getIncidentHistory(
     incident_number: string,
   ): Promise<IncidentHistory[]> {
@@ -423,3 +484,4 @@ async getDashboardStats(userParentCategory?: string): Promise<any> {
     });
   }
 }
+
