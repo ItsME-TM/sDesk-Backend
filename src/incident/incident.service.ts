@@ -124,15 +124,16 @@ export class IncidentService {
       const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
 
       // Create initial incident history entry
-      const initialHistory = this.incidentHistoryRepository.create({
-        incidentNumber: savedIncident.incident_number,
-        status: savedIncident.status,
-        assignedTo: assignedToDisplayName,
-        updatedBy: updatedByDisplayName, // Assuming informant is the initial creator/reporter
-        comments: incidentDto.description, // The description from the initial incident creation
-        category: savedIncident.category,
-        location: savedIncident.location,
-      });
+      const initialHistory = new IncidentHistory();
+      initialHistory.incidentNumber = savedIncident.incident_number;
+      initialHistory.status = savedIncident.status;
+      initialHistory.assignedTo = assignedToDisplayName;
+      initialHistory.updatedBy = updatedByDisplayName;
+      initialHistory.comments = incidentDto.description || '';
+      initialHistory.category = savedIncident.category;
+      initialHistory.location = savedIncident.location;
+      initialHistory.attachment = incidentDto.attachmentFilename || '';
+      initialHistory.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(initialHistory);
 
       return savedIncident;
@@ -312,15 +313,16 @@ export class IncidentService {
       const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
 
       // --- IncidentHistory entry ---
-      const history = this.incidentHistoryRepository.create({
-        incidentNumber: incident_number,
-        status: incidentDto.status || incident.status,
-        assignedTo: assignedToDisplayName,
-        updatedBy: updatedByDisplayName,
-        comments: incidentDto.description || incident.description,
-        category: incidentDto.category || incident.category,
-        location: incidentDto.location || incident.location,
-      });
+      const history = new IncidentHistory();
+      history.incidentNumber = incident_number;
+      history.status = incidentDto.status || incident.status;
+      history.assignedTo = assignedToDisplayName;
+      history.updatedBy = updatedByDisplayName;
+      history.comments = incidentDto.description || incident.description || '';
+      history.category = incidentDto.category || incident.category;
+      history.location = incidentDto.location || incident.location;
+      history.attachment = incidentDto.attachmentFilename || '';
+      history.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(history);
       // --- End IncidentHistory entry ---
       Object.assign(incident, incidentDto);

@@ -40,6 +40,14 @@ export class IncidentDto {
   @IsOptional()
   Attachment?: string;
 
+  @IsString()
+  @IsOptional()
+  attachmentFilename?: string; // For storing server filename
+
+  @IsString()
+  @IsOptional()
+  attachmentOriginalName?: string; // For storing original filename
+
   @IsBoolean()
   @IsOptional()
   automaticallyAssignForTier2?: boolean;
