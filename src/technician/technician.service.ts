@@ -8,12 +8,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Technician } from './entities/technician.entity';
 import { CreateTechnicianDto } from './dto/create-technician.dto';
+import { notifyInactiveByAdmin, emitTechnicianStatusChange } from '../main';
 
 @Injectable()
 export class TechnicianService {
   constructor(
     @InjectRepository(Technician)
     private readonly technicianRepo: Repository<Technician>,
+    
   ) {}
 
   // Create a technician
@@ -53,16 +55,34 @@ export class TechnicianService {
   }
 
   // Update technician
-  async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Technician> {
-    try {
-      const technician = await this.findOneTechnician(serviceNum);
-      const updated = Object.assign(technician, dto);
-      return await this.technicianRepo.save(updated);
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Failed to update technician.');
+
+async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Technician> {
+  try {
+    const technician = await this.findOneTechnician(serviceNum);
+
+    const wasActive = technician.active;
+    const willBeActive = dto.active;
+
+    Object.assign(technician, dto);
+    const savedTech = await this.technicianRepo.save(technician);
+
+    // WebSocket notifications
+    emitTechnicianStatusChange(serviceNum, willBeActive);
+
+    // If changing from active → inactive
+    if (wasActive && willBeActive === false) {
+      notifyInactiveByAdmin(serviceNum);
     }
+
+    return savedTech;
+  } catch (error) {
+    if (error instanceof NotFoundException) throw error;
+    throw new InternalServerErrorException('Failed to update technician.');
   }
+}
+
+
+
 
   // Delete technician by service number
   async deleteTechnician(serviceNum: string): Promise<void> {
@@ -80,13 +100,14 @@ export class TechnicianService {
 
 
 async updateTechnicianActive(serviceNum: string, active: boolean): Promise<void> {
-  console.log(`[TechnicianService] Updating active status for ${serviceNum} to ${active}`);
   const result = await this.technicianRepo.update({ serviceNum }, { active });
 
-  if (result.affected === 0) {
-    throw new NotFoundException(`Technician with Service Number "${serviceNum}" not found.`);
+    if (result.affected === 0) {
+      throw new NotFoundException(
+        `Technician with Service Number "${serviceNum}" not found.`,
+      );
+    }
   }
-}
 
 
 async findActiveTechnicians(): Promise<Technician[]> {
@@ -98,7 +119,6 @@ async findActiveTechnicians(): Promise<Technician[]> {
     const all = await this.technicianRepo.find();
     return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
   } catch (error) {
-    console.error('Error in checkTechnicianStatus:', error.message);
     throw new Error('Failed to retrieve technician status');
   }
 }
