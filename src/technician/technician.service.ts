@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindManyOptions } from 'typeorm';
 import { Technician } from './entities/technician.entity';
 import { CreateTechnicianDto } from './dto/create-technician.dto';
 import { notifyInactiveByAdmin, emitTechnicianStatusChange } from '../main';
@@ -31,10 +31,24 @@ export class TechnicianService {
     }
   }
 
-  // Get all technicians
-  async findAllTechncians(): Promise<Technician[]> {
+  // Get all technicians with optional filters
+  async findAllTechncians(active?: boolean, level?: string): Promise<Technician[]> {
     try {
-      return await this.technicianRepo.find();
+      const findOptions: FindManyOptions<Technician> = {};
+      const where: any = {};
+
+      if (active !== undefined) {
+        where.active = active;
+      }
+      if (level) {
+        where.level = level;
+      }
+
+      if (Object.keys(where).length > 0) {
+        findOptions.where = where;
+      }
+
+      return await this.technicianRepo.find(findOptions);
     } catch (error) {
       throw new InternalServerErrorException('Failed to fetch technicians.');
     }
@@ -55,34 +69,30 @@ export class TechnicianService {
   }
 
   // Update technician
+  async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Technician> {
+    try {
+      const technician = await this.findOneTechnician(serviceNum);
 
-async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Technician> {
-  try {
-    const technician = await this.findOneTechnician(serviceNum);
+      const wasActive = technician.active;
+      const willBeActive = dto.active;
 
-    const wasActive = technician.active;
-    const willBeActive = dto.active;
+      Object.assign(technician, dto);
+      const savedTech = await this.technicianRepo.save(technician);
 
-    Object.assign(technician, dto);
-    const savedTech = await this.technicianRepo.save(technician);
+      // WebSocket notifications
+      emitTechnicianStatusChange(serviceNum, willBeActive);
 
-    // WebSocket notifications
-    emitTechnicianStatusChange(serviceNum, willBeActive);
+      // If changing from active → inactive
+      if (wasActive && willBeActive === false) {
+        notifyInactiveByAdmin(serviceNum);
+      }
 
-    // If changing from active → inactive
-    if (wasActive && willBeActive === false) {
-      notifyInactiveByAdmin(serviceNum);
+      return savedTech;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to update technician.');
     }
-
-    return savedTech;
-  } catch (error) {
-    if (error instanceof NotFoundException) throw error;
-    throw new InternalServerErrorException('Failed to update technician.');
   }
-}
-
-
-
 
   // Delete technician by service number
   async deleteTechnician(serviceNum: string): Promise<void> {
@@ -97,30 +107,12 @@ async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Te
     }
   }
 
-
-
-async updateTechnicianActive(serviceNum: string, active: boolean): Promise<void> {
-  const result = await this.technicianRepo.update({ serviceNum }, { active });
-
-    if (result.affected === 0) {
-      throw new NotFoundException(
-        `Technician with Service Number "${serviceNum}" not found.`,
-      );
+  async checkTechnicianStatus(): Promise<{ serviceNum: string; active: string }[]> {
+    try {
+      const all = await this.technicianRepo.find();
+      return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
+    } catch (error) {
+      throw new Error('Failed to retrieve technician status');
     }
   }
-
-
-async findActiveTechnicians(): Promise<Technician[]> {
-  return this.technicianRepo.find({ where: { active: true } });
-}
-
- async checkTechnicianStatus(): Promise<{ serviceNum: string; active: string }[]> {
-  try {
-    const all = await this.technicianRepo.find();
-    return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
-  } catch (error) {
-    throw new Error('Failed to retrieve technician status');
-  }
-}
-
 }

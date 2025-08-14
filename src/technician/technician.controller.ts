@@ -70,9 +70,13 @@ export class TechnicianController {
   @Get('technicians')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
-  async findAllTechnicians(): Promise<Technician[]> {
+  async findAllTechnicians(
+    @Query('active') active?: string,
+    @Query('level') level?: string,
+  ): Promise<Technician[]> {
     try {
-      return await this.technicianService.findAllTechncians();
+      const isActive = active === 'true' ? true : active === 'false' ? false : undefined;
+      return await this.technicianService.findAllTechncians(isActive, level);
     } catch (error) {
       throw new HttpException(
         error.message || 'Failed to fetch technicians.',
@@ -157,7 +161,7 @@ export class TechnicianController {
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    }
+    }s
   }
   @Put('technician/:serviceNum/force-logout')
   @UseGuards(JwtAuthGuard, RolesGuard)
