@@ -17,8 +17,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { Response } from 'express';
 import * as fs from 'fs';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
@@ -136,7 +136,7 @@ export class IncidentController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
-      destination: './uploads/incident_attachments',
+      destination: join(process.cwd(), 'uploads', 'incident_attachments'),
       filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const filename = `${uniqueSuffix}-${file.originalname}`;
@@ -384,7 +384,7 @@ export class IncidentController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('attachment', {
     storage: diskStorage({
-      destination: './uploads/incident_attachments',
+      destination: join(process.cwd(), 'uploads', 'incident_attachments'),
       filename: (req, file, callback) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const fileExtension = extname(file.originalname);

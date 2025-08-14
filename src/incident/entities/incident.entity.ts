@@ -56,4 +56,10 @@ export class Incident {
 
   @Column({ nullable: true })
   Attachment!: string;
+
+  @Column({ nullable: true })
+  attachmentFilename?: string;
+
+  @Column({ nullable: true })
+  attachmentOriginalName?: string;
 }
