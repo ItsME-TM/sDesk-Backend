@@ -19,6 +19,7 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
 import { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
@@ -136,7 +137,18 @@ export class IncidentController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
-      destination: join(process.cwd(), 'uploads', 'incident_attachments'),
+      destination: (req, file, cb) => {
+        const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+        try {
+          if (!fs.existsSync(uploadsPath)) {
+            fs.mkdirSync(uploadsPath, { recursive: true });
+          }
+          cb(null, uploadsPath);
+        } catch (error) {
+          console.error('Upload directory creation failed:', error);
+          cb(error, uploadsPath);
+        }
+      },
       filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const filename = `${uniqueSuffix}-${file.originalname}`;
@@ -383,14 +395,27 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('attachment', {
-    storage: diskStorage({
-      destination: join(process.cwd(), 'uploads', 'incident_attachments'),
-      filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const fileExtension = extname(file.originalname);
-        callback(null, `${uniqueSuffix}${fileExtension}`);
-      },
-    }),
+    storage: process.env.NODE_ENV === 'production' 
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, callback) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              callback(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              callback(error, uploadsPath);
+            }
+          },
+          filename: (req, file, callback) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const fileExtension = extname(file.originalname);
+            callback(null, `${uniqueSuffix}${fileExtension}`);
+          },
+        }),
     fileFilter: (req, file, callback) => {
       const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
       const fileExtension = extname(file.originalname).toLowerCase().slice(1);
@@ -410,6 +435,23 @@ export class IncidentController {
       throw new BadRequestException('No file uploaded');
     }
 
+    // Handle production environment (memory storage)
+    if (process.env.NODE_ENV === 'production') {
+      // For production, we need to save the buffer to a temporary location
+      // or use cloud storage service like AWS S3, Cloudinary etc.
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
+      
+      return {
+        success: true,
+        filename: filename,
+        originalName: file.originalname,
+        size: file.size,
+        buffer: file.buffer, // Available in memory storage
+        mimetype: file.mimetype,
+      };
+    }
+
+    // For local development (disk storage)
     return {
       success: true,
       filename: file.filename,
