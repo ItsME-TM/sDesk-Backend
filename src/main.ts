@@ -49,10 +49,14 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  // Ensure uploads directory exists
+  // Ensure uploads directory exists (handle both local and cloud storage)
   const uploadsDir = join(process.cwd(), 'uploads', 'incident_attachments');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch (error) {
+    console.warn('Could not create uploads directory (possibly read-only filesystem):', error.message);
   }
 
   // Serve static files from uploads directory
