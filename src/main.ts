@@ -4,6 +4,9 @@ import * as cookieParser from 'cookie-parser';
 import { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import { join } from 'path';
+import * as express from 'express';
+import * as fs from 'fs';
 
 // Define the expected user data structure
 interface UserData {
@@ -45,6 +48,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+
+  // Ensure uploads directory exists
+  const uploadsDir = join(process.cwd(), 'uploads', 'incident_attachments');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  // Serve static files from uploads directory
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
