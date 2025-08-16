@@ -48,6 +48,16 @@ export class IncidentDto {
   @IsOptional()
   attachmentOriginalName?: string; // For storing original filename
 
+  @IsOptional()
+  attachmentBuffer?: Buffer; // For production memory storage
+
+  @IsString()
+  @IsOptional()
+  attachmentMimetype?: string; // For storing file mimetype
+
+  @IsOptional()
+  attachmentSize?: number; // For storing file size
+
   @IsBoolean()
   @IsOptional()
   automaticallyAssignForTier2?: boolean;
