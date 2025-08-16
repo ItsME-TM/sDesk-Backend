@@ -48,6 +48,94 @@ export class IncidentController {
         // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
         io.emit('incident_created', eventData);
 
+        // 2. Send to specific assigned technician (with popup notification)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      }
+
+      return incident;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Post method with attachment
+  @Post('create-incident-with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: process.env.NODE_ENV === 'production' 
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, cb) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              cb(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              cb(error, uploadsPath);
+            }
+          },
+          filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const filename = `${uniqueSuffix}-${file.originalname}`;
+            cb(null, filename);
+          },
+        }),
+    limits: {
+      fileSize: 1024 * 1024, // 1MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.'), false);
+      }
+    },
+  }))
+  async createIncidentWithAttachment(
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // Add attachment info to the DTO if file is uploaded
+      if (file) {
+        if (process.env.NODE_ENV === 'production') {
+          // For production (memory storage)
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+          
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer;
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
+      }
+
+      const incident = await this.incidentService.create(incidentDto);
+
+      if (io) {
+        const eventData = { incident };
+
+        // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_created', eventData);
+
         // 2. Send targeted notification to assigned technician (with popup)
         if (incident.handler) {
           io.to(`user_${incident.handler}`).emit(
