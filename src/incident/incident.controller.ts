@@ -136,25 +136,27 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('file', {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
-        try {
-          if (!fs.existsSync(uploadsPath)) {
-            fs.mkdirSync(uploadsPath, { recursive: true });
-          }
-          cb(null, uploadsPath);
-        } catch (error) {
-          console.error('Upload directory creation failed:', error);
-          cb(error, uploadsPath);
-        }
-      },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const filename = `${uniqueSuffix}-${file.originalname}`;
-        cb(null, filename);
-      },
-    }),
+    storage: process.env.NODE_ENV === 'production' 
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, cb) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              cb(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              cb(error, uploadsPath);
+            }
+          },
+          filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const filename = `${uniqueSuffix}-${file.originalname}`;
+            cb(null, filename);
+          },
+        }),
     limits: {
       fileSize: 1024 * 1024, // 1MB
     },
@@ -175,8 +177,22 @@ export class IncidentController {
     try {
       // If file is uploaded, add attachment info to the DTO
       if (file) {
-        incidentDto.attachmentFilename = file.filename;
-        incidentDto.attachmentOriginalName = file.originalname;
+        // Handle production environment (memory storage)
+        if (process.env.NODE_ENV === 'production') {
+          // Generate a unique filename for production
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+          
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer; // Store buffer for cloud storage
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
       }
 
       const updatedIncident = await this.incidentService.update(
@@ -192,8 +208,8 @@ export class IncidentController {
 
       return updatedIncident;
     } catch (error) {
-      // If there's an error and a file was uploaded, clean it up
-      if (file && file.path) {
+      // If there's an error and a file was uploaded, clean it up (only for local storage)
+      if (file && file.path && process.env.NODE_ENV !== 'production') {
         try {
           require('fs').unlinkSync(file.path);
         } catch (cleanupError) {
