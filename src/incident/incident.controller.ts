@@ -220,11 +220,11 @@ export class IncidentController {
       throw error;
     }
   }
-  @Put(':incident_number/with-attachment')
+  @Post(':incident_number/update-with-attachment')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   @UseInterceptors(FileInterceptor('file', {
-    storage: process.env.NODE_ENV === 'production' 
+    storage: process.env.NODE_ENV === 'production'
       ? memoryStorage() // Use memory storage for Heroku
       : diskStorage({
           destination: (req, file, cb) => {
