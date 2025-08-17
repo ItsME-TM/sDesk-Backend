@@ -5,6 +5,7 @@ import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { verify } from 'jsonwebtoken';
 import { TeamAdminService } from '../teamadmin/teamadmin.service';
 import { TechnicianService } from '../technician/technician.service';
+import { emitTechnicianStatusChange } from '../main'; 
 import { User } from './interface/auth.interface';
 import { UserPayload } from './interface/user-payload.interface';
 
@@ -14,6 +15,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly teamAdminService: TeamAdminService,
     private readonly technicianService: TechnicianService,
+    
   ) {}
 
   @Post('login')
@@ -33,19 +35,22 @@ export class AuthController {
           body.state,
           body.redirect_uri,
         );
-      console.log('[AuthController] Microsoft login successful:', user);
-      console.log('[AuthController] Access Token:', accessToken);
-      console.log('[AuthController] Refresh Token:', refreshToken);
 
-      // ✅ Update technician to active if login was successful
+      //  Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
         await this.technicianService.updateTechnicianActive(
           user.serviceNum,
           true,
         );
-      }
+        
 
-      // ✅ Set refresh token cookie
+      // Emit WebSocket event so all admins update instantly
+      emitTechnicianStatusChange(user.serviceNum, true);
+    
+    }
+
+
+      // Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: true, // Must be true in production
@@ -54,7 +59,7 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      // ✅ Set access token cookie
+      // Set access token cookie
       res.cookie('jwt', accessToken, {
         httpOnly: true,
         secure: true, // Must be true in production
@@ -63,8 +68,7 @@ export class AuthController {
       });
 
       return { success: true, user, accessToken };
-    } catch (error) {
-      console.error('[AuthController] Login error:', error);
+    } catch {
       return { success: false, message: 'Login failed' };
     }
   }
@@ -76,9 +80,8 @@ export class AuthController {
   ): Promise<{ success: boolean; message: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
-
-      // ✅ Technician active update
       const token = req.cookies?.jwt;
+    
       if (token) {
         try {
           const payload = verify(
@@ -90,35 +93,62 @@ export class AuthController {
               payload.serviceNum,
               false,
             );
-            console.log(
-              `[Logout] Technician ${payload.serviceNum} marked as inactive`,
-            );
+            if (payload.role === 'technician' && payload.serviceNum) {
+  await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
+  emitTechnicianStatusChange(payload.serviceNum, false);
+}
+           
           }
         } catch (e) {
-          console.warn('[Logout] Failed to decode token:', e.message);
+          return {
+            success: false,
+            message: `Technician status update error: ${e instanceof Error ? e.message : e}`,
+          };
+          
         }
       }
 
-      if (refreshToken) {
-        this.authService.revokeRefreshToken(refreshToken);
+      if (typeof refreshToken === 'string') {
+        try {
+          this.authService.revokeRefreshToken(refreshToken);
+        } catch (e) {
+          return {
+            success: false,
+            message: `Refresh token revoke error: ${e instanceof Error ? e.message : e}`,
+          };
+        }
       }
 
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/auth/refresh-token',
-      });
+      try {
+        res.clearCookie('refreshToken', {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          path: '/auth/refresh-token',
+        });
+        
+      } catch (e) {
+        return {
+          success: false,
+          message: `Clear refreshToken cookie error: ${e instanceof Error ? e.message : e}`,
+        };
+      }
 
-      res.clearCookie('jwt', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-      });
+      try {
+        res.clearCookie('jwt', {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+        });
+      } catch (e) {
+        return {
+          success: false,
+          message: `Clear jwt cookie error: ${e instanceof Error ? e.message : e}`,
+        };
+      }
 
       return { success: true, message: 'Logged out successfully' };
-    } catch (error) {
-      console.error('[AuthController] Logout error:', error);
+    } catch {
       return { success: false, message: 'Logout failed' };
     }
   }
@@ -130,13 +160,13 @@ export class AuthController {
   ): Promise<{ success: boolean; accessToken?: string; message?: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
-      if (!refreshToken) {
+      if (typeof refreshToken !== 'string') {
         res.clearCookie('jwt', {
           httpOnly: true,
           secure: true,
           sameSite: 'none',
+          path: '/auth/refresh-token',
         });
-        console.log('[AuthController] No refresh token provided');
         return { success: false, message: 'No refresh token provided' };
       }
 
@@ -148,9 +178,8 @@ export class AuthController {
         maxAge: 60 * 60 * 1000,
       });
 
-      console.log('[AuthController] New access token generated:', accessToken);
       return { success: true, accessToken };
-    } catch (error) {
+    } catch {
       res.clearCookie('jwt', {
         httpOnly: true,
         secure: true,
@@ -162,7 +191,6 @@ export class AuthController {
         sameSite: 'none',
         path: '/auth/refresh-token',
       });
-      console.error('[AuthController] Refresh token error:', error);
       return { success: false, message: 'Token refresh failed' };
     }
   }
@@ -189,7 +217,6 @@ export class AuthController {
         token,
         process.env.JWT_SECRET || 'your-secret-key',
       ) as UserPayload;
-      console.log('[AuthController] Logged user payload:', payload);
 
       if (payload.role === 'admin' && payload.serviceNum) {
         const admin = await this.teamAdminService.findTeamAdminByServiceNumber(
@@ -227,20 +254,12 @@ export class AuthController {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'TokenExpiredError') {
-          console.error(
-            '[AuthController] Get logged user error: Token expired',
-          );
           return { success: false, message: 'Token expired' };
         }
         if (error.name === 'JsonWebTokenError') {
-          console.error(
-            '[AuthController] Get logged user error: Invalid token',
-          );
           return { success: false, message: 'Invalid token' };
         }
       }
-
-      console.error('[AuthController] Get logged user error:', error);
       return { success: false, message: 'Token verification failed' };
     }
   }

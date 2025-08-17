@@ -3,15 +3,64 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
+import { join } from 'path';
+import * as express from 'express';
+import * as fs from 'fs';
 
+// Define the expected user data structure
+interface UserData {
+  serviceNum: string;
+  role: string;
+}
+
+// Extend the Socket type to include custom properties
+interface CustomSocket extends Socket {
+  userId?: string;
+  userRole?: string;
+}
 // Global socket instance (we'll improve this architecture later)
 let io: Server;
+const technicianSockets = new Map<string, string>(); // serviceNum → socketId
+
+// ===== Helper: Notify technician inactive by admin =====
+export function notifyInactiveByAdmin(serviceNum: string) {
+  const socketId = technicianSockets.get(String(serviceNum));
+ 
+  
+  if (socketId) {
+    io.to(socketId).emit('inactive_by_admin', {
+      message: 'You are inactive by admin.',
+    });
+    
+  } else {
+    
+  }
+}
+
+// ===== Helper: Broadcast status change =====
+export function emitTechnicianStatusChange(serviceNum: string, active: boolean) {
+  io.emit('technician_status_changed', { serviceNum, active });
+  
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+
+  // Ensure uploads directory exists (handle both local and cloud storage)
+  const uploadsDir = join(process.cwd(), 'uploads', 'incident_attachments');
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch (error) {
+    console.warn('Could not create uploads directory (possibly read-only filesystem):', error.message);
+  }
+
+  // Serve static files from uploads directory
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
@@ -21,23 +70,14 @@ async function bootstrap() {
     'https://localhost:5173',
   ];
 
-  console.log('🔧 CORS Configuration:');
-  console.log('🌍 Environment:', process.env.NODE_ENV);
-  console.log('🔗 Allowed Origins:', allowedOrigins);
+  
 
+  // Request logging middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
-    console.log(
-      `🌐 ${req.method} ${req.url} from origin: ${req.headers.origin || 'no-origin'}`,
-    );
+ 
 
     if (req.method === 'OPTIONS') {
-      console.log('🔍 CORS Preflight Headers:', {
-        'access-control-request-method':
-          req.headers['access-control-request-method'],
-        'access-control-request-headers':
-          req.headers['access-control-request-headers'],
-        origin: req.headers.origin,
-      });
+      
     }
 
     next();
@@ -61,6 +101,7 @@ async function bootstrap() {
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
+
   const httpServer = createServer(app.getHttpAdapter().getInstance());
   io = new Server(httpServer, {
     cors: {
@@ -70,66 +111,60 @@ async function bootstrap() {
     },
   });
 
-  console.log('🔧 Socket.IO server initialized');
+
 
   await app.init();
-
   const port = Number(process.env.PORT) || 8000; // Convert to number
   httpServer.listen(port, '0.0.0.0', () => {
-    console.log(`Application is running on: http://localhost:${port}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`CORS Configuration is active`);
-    console.log(`Socket.IO server is running`);
+    // Application started successfully
   });
 
+  // ===== SOCKET EVENTS =====
   io.on('connection', (socket) => {
-    console.log('✅ [SOCKET] Client connected:', socket.id);
-    console.log('📊 [SOCKET] Total connected clients:', io.engine.clientsCount);
 
-    // Store user info when they connect (for targeted notifications)
-    socket.on('user_connected', (userData: any) => {
-      console.log('👤 [SOCKET] User authenticated:', userData);
 
-      // Store user data in socket for reference
-      (socket as any).userId = userData.serviceNum;
+    // Store user info when they connect
+    socket.on('user_connected', (userData: UserData) => {
+   
+     
+
+      const serviceNumStr = String(userData.serviceNum);
+      (socket as any).userId = serviceNumStr;
       (socket as any).userRole = userData.role;
 
-      // Only join user-specific room for targeted notifications
-      void socket.join(`user_${userData.serviceNum}`);
+      // Save socket mapping
+      technicianSockets.set(serviceNumStr, socket.id);
+    
 
-      console.log(
-        `👤 [SOCKET] User ${userData.serviceNum} (${userData.role}) joined room: user_${userData.serviceNum}`,
-      );
+      // Join personal room
+      socket.join(`user_${serviceNumStr}`);
+      
     });
 
-    socket.on('test_message', (data) => {
-      console.log('📨 [SOCKET] Received test message:', data);
-      socket.emit('test_response', { message: 'Hello back from server!' });
-      console.log('📤 [SOCKET] Sent test response to client:', socket.id);
-    });
+    // ...remove test_message handler...
 
     socket.on('disconnect', () => {
-      console.log('❌ [SOCKET] Client disconnected:', socket.id);
-      if ((socket as any).userId) {
-        console.log(`👤 [SOCKET] User ${(socket as any).userId} disconnected`);
+   
+
+      // Remove from map
+      for (const [serviceNum, sockId] of technicianSockets.entries()) {
+        if (sockId === socket.id) {
+          technicianSockets.delete(serviceNum);
+         
+          break;
+        }
       }
-      console.log(
-        '📊 [SOCKET] Remaining connected clients:',
-        io.engine.clientsCount,
-      );
+
+
     });
   });
-
   // Add global socket event listener to monitor all emissions
-  io.engine.on('connection_error', (err) => {
-    console.log('🚨 [SOCKET] Connection error:', err.req);
-    console.log('🚨 [SOCKET] Error code:', err.code);
-    console.log('🚨 [SOCKET] Error message:', err.message);
-    console.log('🚨 [SOCKET] Error context:', err.context);
+  io.engine.on('connection_error', () => {
+    // Handle connection errors silently
   });
 }
 
-// Export the socket instance so other files can use it
-export { io };
+// Export for other files
+export { io, technicianSockets };
 
 void bootstrap();

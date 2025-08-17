@@ -30,14 +30,13 @@ export class TechnicianController {
 
   @Post('technician')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async add(
     @Body() dto: CreateTechnicianDto,
     @Res() res: Response,
     @Req() req: Request,
   ): Promise<any> {
     const accessToken = req.cookies?.jwt;
-    console.log('[POST /technician] Access Token from cookie:', accessToken);
 
     let isActive = false;
     let shouldClearCookies = false;
@@ -68,49 +67,6 @@ export class TechnicianController {
     return res.json(technician);
   }
 
-  @Get('technician/check-status')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
-  async checkTechnicianStatus(@Req() req: Request, @Res() res: Response) {
-    const token = req.cookies?.jwt;
-    console.log('[GET /technician/check-status] Token:', token);
-
-    if (!token) {
-      return res
-        .status(HttpStatus.UNAUTHORIZED)
-        .json({ message: 'No token provided. Please login.' });
-    }
-
-    try {
-      const user = this.authService.getUserFromAccessToken(token);
-      if (!user || user.role !== 'technician') {
-        return res
-          .status(HttpStatus.FORBIDDEN)
-          .json({ message: 'Access denied.' });
-      }
-
-      const technician = await this.technicianService.findOneTechnician(
-        user.serviceNum,
-      );
-
-      if (!technician.active) {
-        res.clearCookie('jwt');
-        res.clearCookie('refreshToken');
-        return res
-          .status(HttpStatus.UNAUTHORIZED)
-          .json({ message: 'Deactivated. You have been logged out.' });
-      }
-
-      return res
-        .status(HttpStatus.OK)
-        .json({ message: 'You are active.', user: technician });
-    } catch (err) {
-      console.error('[Check Technician Status] Error:', err);
-      return res
-        .status(HttpStatus.UNAUTHORIZED)
-        .json({ message: 'Invalid or expired token.' });
-    }
-  }
   @Get('technicians')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -125,16 +81,14 @@ export class TechnicianController {
     }
   }
 
-  @Get('technician/active')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
-  async getActiveTechnicians(): Promise<Technician[]> {
+  @Get('check-status')
+  async checkStatus() {
     try {
-      return await this.technicianService.findActiveTechnicians();
+      return await this.technicianService.checkTechnicianStatus();
     } catch (error) {
       throw new HttpException(
-        error.message || 'Failed to fetch active technicians.',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        'Unable to fetch technician status',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -157,7 +111,7 @@ export class TechnicianController {
 
   @Put('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async updateTechnician(
     @Param('serviceNum') serviceNum: string,
     @Body() dto: CreateTechnicianDto,
@@ -174,7 +128,7 @@ export class TechnicianController {
 
   @Delete('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('admin')
   async deleteTechnician(
     @Param('serviceNum') serviceNum: string,
   ): Promise<{ message: string }> {
@@ -192,7 +146,37 @@ export class TechnicianController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
-    await this.technicianService.updateTechnicianActive(serviceNum, false);
-    return { message: 'Technician deactivated' };
+    try {
+      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      return { message: 'Technician deactivated' };
+    } catch (error) {
+      throw new HttpException(
+        {
+          message: 'Failed to deactivate technician',
+          details: error.message || error,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  @Put('technician/:serviceNum/force-logout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'superAdmin')
+  async forceLogoutTechnician(
+    @Param('serviceNum') serviceNum: string,
+    @Req() req: Request,
+  ) {
+    try {
+      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      return { message: 'Technician force logout initiated', serviceNum };
+    } catch (error) {
+      throw new HttpException(
+        {
+          message: 'Failed to force logout technician',
+          details: error.message || error,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

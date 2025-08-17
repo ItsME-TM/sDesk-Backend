@@ -35,7 +35,7 @@ export class SLTUsersController {
   }
 
   @Get('serviceNum/:serviceNum')
-  @Roles('admin', 'superAdmin', 'user', 'technician')
+  @Roles('admin', 'superAdmin', 'technician', 'user')
   async getUserByServiceNum(
     @Param('serviceNum') serviceNum: string,
   ): Promise<SLTUser | null> {
@@ -59,14 +59,14 @@ export class SLTUsersController {
   async createUser(@Body() userData: Partial<SLTUser>): Promise<SLTUser> {
     try {
       return await this.sltUsersService.createUser(userData);
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error &&
         typeof error === 'object' &&
         'message' in error &&
-        typeof (error as Record<string, unknown>).message === 'string'
-          ? ((error as Record<string, any>).message as string)
+        typeof (error as { message?: string }).message === 'string'
+          ? (error as { message: string }).message
           : 'Failed to create user',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
@@ -87,7 +87,6 @@ export class SLTUsersController {
       if (!user) {
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
-      console.log('Updated user:', user);
       return user;
     } catch (error) {
       if (error instanceof HttpException) throw error;

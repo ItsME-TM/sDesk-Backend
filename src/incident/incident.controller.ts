@@ -7,7 +7,19 @@ import {
   Param,
   UseGuards,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import * as fs from 'fs';
+import { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
@@ -26,33 +38,103 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async create(@Body() incidentDto: IncidentDto): Promise<Incident> {
-    console.log('🔍 [IncidentController] create-incident endpoint called');
-    console.log('🔍 [IncidentController] Request body:', incidentDto);
     try {
       const incident = await this.incidentService.create(incidentDto);
-      console.log(
-        '✅ [IncidentController] Incident created successfully:',
-        incident.incident_number,
-      );
 
-      // Emit socket event to all clients when incident is created
-      console.log(
-        '📡 [IncidentController] Emitting socket event: incident_created',
-      );
-      console.log('📡 [IncidentController] Socket IO instance exists:', !!io);
 
       if (io) {
-        console.log(
-          '📡 [IncidentController] Connected clients count:',
-          io.engine.clientsCount,
-        ); // Send to specific audiences based on incident context
         const eventData = { incident };
 
         // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
         io.emit('incident_created', eventData);
-        console.log(
-          '📡 [IncidentController] Broadcast incident_created to ALL users (for Redux update)',
-        );
+
+        // 2. Send to specific assigned technician (with popup notification)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      }
+
+      return incident;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Post method with attachment
+  @Post('create-incident-with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: process.env.NODE_ENV === 'production' 
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, cb) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              cb(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              cb(error, uploadsPath);
+            }
+          },
+          filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const filename = `${uniqueSuffix}-${file.originalname}`;
+            cb(null, filename);
+          },
+        }),
+    limits: {
+      fileSize: 1024 * 1024, // 1MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.'), false);
+      }
+    },
+  }))
+  async createIncidentWithAttachment(
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // Add attachment info to the DTO if file is uploaded
+      if (file) {
+        if (process.env.NODE_ENV === 'production') {
+          // For production (memory storage)
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+          
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer;
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
+      }
+
+      const incident = await this.incidentService.create(incidentDto);
+
+      if (io) {
+        const eventData = { incident };
+
+        // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_created', eventData);
 
         // 2. Send targeted notification to assigned technician (with popup)
         if (incident.handler) {
@@ -63,23 +145,13 @@ export class IncidentController {
               message: `You have been assigned incident ${incident.incident_number}`,
             },
           );
-          console.log(
-            `📡 [IncidentController] Targeted incident_assigned_technician sent to: ${incident.handler}`,
-          );
         }
 
-        console.log('📡 [IncidentController] Event data:', {
-          incident_number: incident.incident_number,
-          handler: incident.handler,
-          informant: incident.informant,
-        });
       } else {
-        console.log('❌ [IncidentController] Socket.IO instance not available');
       }
 
       return incident;
     } catch (error) {
-      console.error('❌ [IncidentController] Error creating incident:', error);
       throw error;
     }
   }
@@ -102,31 +174,14 @@ export class IncidentController {
   async getAssignedByMe(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Incident[]> {
-    console.log(
-      '🔍 Incident Controller: getAssignedByMe called with serviceNum:',
-      serviceNum,
-    );
-    console.log(
-      '🔍 Incident Controller: Request timestamp:',
-      new Date().toISOString(),
-    );
 
     // eslint-disable-next-line no-useless-catch
     try {
-      console.log(
-        '🔍 Incident Controller: About to call service.getAssignedByMe...',
-      );
       const result = await this.incidentService.getAssignedByMe(serviceNum);
 
-      console.log('✅ Incident Controller: Service returned result:', result);
-      console.log(
-        '✅ Incident Controller: Number of incidents found:',
-        result?.length || 0,
-      );
 
       return result;
     } catch (error) {
-      console.error('❌ Incident Controller: Error in getAssignedByMe:', error);
       throw error;
     }
   }
@@ -173,6 +228,100 @@ export class IncidentController {
       throw error;
     }
   }
+  @Post(':incident_number/update-with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: process.env.NODE_ENV === 'production'
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, cb) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              cb(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              cb(error, uploadsPath);
+            }
+          },
+          filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const filename = `${uniqueSuffix}-${file.originalname}`;
+            cb(null, filename);
+          },
+        }),
+    limits: {
+      fileSize: 1024 * 1024, // 1MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.'), false);
+      }
+    },
+  }))
+  async updateWithAttachment(
+    @Param('incident_number') incident_number: string,
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // If file is uploaded, add attachment info to the DTO
+      if (file) {
+        // Handle production environment (memory storage)
+        if (process.env.NODE_ENV === 'production') {
+          // Generate a unique filename for production
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+          
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer; // Store buffer for cloud storage
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
+      }
+
+      const updatedIncident = await this.incidentService.update(
+        incident_number,
+        incidentDto,
+      );
+
+      if (io) {
+        const eventData = { incident: updatedIncident };
+        // Emit real-time update
+        io.emit('incidentUpdated', eventData);
+      }
+
+      return updatedIncident;
+    } catch (error) {
+      // If there's an error and a file was uploaded, clean it up (only for local storage)
+      if (file && file.path && process.env.NODE_ENV !== 'production') {
+        try {
+          require('fs').unlinkSync(file.path);
+        } catch (cleanupError) {
+          console.error('Failed to clean up uploaded file:', cleanupError);
+        }
+      }
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException('Failed to update incident: ' + message);
+    }
+  }
+
   @Put(':incident_number')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -180,41 +329,20 @@ export class IncidentController {
     @Param('incident_number') incident_number: string,
     @Body() incidentDto: IncidentDto,
   ): Promise<Incident> {
-    console.log(
-      '🔍 [IncidentController] update endpoint called for incident:',
-      incident_number,
-    );
-    console.log('🔍 [IncidentController] Update data:', incidentDto);
 
     try {
       const updatedIncident = await this.incidentService.update(
         incident_number,
         incidentDto,
       );
-      console.log(
-        '✅ [IncidentController] Incident updated successfully:',
-        updatedIncident.incident_number,
-      );
 
-      // Emit socket event to all clients when incident is updated
-      console.log(
-        '📡 [IncidentController] Emitting socket event: incident_updated',
-      );
-      console.log('📡 [IncidentController] Socket IO instance exists:', !!io);
 
       if (io) {
-        console.log(
-          '📡 [IncidentController] Connected clients count:',
-          io.engine.clientsCount,
-        );
 
         const eventData = { incident: updatedIncident };
 
         // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
         io.emit('incident_updated', eventData);
-        console.log(
-          '📡 [IncidentController] Broadcast incident_updated to ALL users (for Redux update)',
-        );
 
         // 2. Send targeted notification to assigned handler (with popup)
         if (updatedIncident.handler) {
@@ -225,23 +353,13 @@ export class IncidentController {
               message: `Incident ${updatedIncident.incident_number} has been updated`,
             },
           );
-          console.log(
-            `📡 [IncidentController] Targeted incident_updated_assigned sent to: ${updatedIncident.handler}`,
-          );
         }
 
-        console.log('📡 [IncidentController] Update event data:', {
-          incident_number: updatedIncident.incident_number,
-          handler: updatedIncident.handler,
-          status: updatedIncident.status,
-        });
       } else {
-        console.log('❌ [IncidentController] Socket.IO instance not available');
       }
 
       return updatedIncident;
     } catch (error) {
-      console.error('❌ [IncidentController] Error updating incident:', error);
       throw error;
     }
   }
@@ -279,7 +397,6 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   testSocket(): { message: string } {
-    console.log('🧪 [IncidentController] test-socket endpoint called');
 
     // Create a mock incident for testing
     const mockIncident = {
@@ -293,22 +410,14 @@ export class IncidentController {
       problem: 'Testing socket functionality',
     };
 
-    console.log(
-      '📡 [IncidentController] Emitting test socket event: incident_created',
-    );
 
     if (io) {
-      console.log(
-        '📡 [IncidentController] Connected clients count:',
-        io.engine.clientsCount,
-      );
 
       // Send all types of notifications for testing
       const eventData = { incident: mockIncident };
 
       // 1. General notification to all users
       io.emit('incident_created', eventData);
-      console.log('📡 [IncidentController] Broadcast to ALL users');
 
       // 2. Targeted notification to assigned technician (simulating assignment)
       io.to(`user_${mockIncident.handler}`).emit(
@@ -318,11 +427,7 @@ export class IncidentController {
           message: `Test assignment: You have been assigned incident ${mockIncident.incident_number}`,
         },
       );
-      console.log(
-        `📡 [IncidentController] Targeted incident_assigned_technician sent to: ${mockIncident.handler}`,
-      );
     } else {
-      console.log('❌ [IncidentController] Socket.IO instance not available');
     }
 
     return { message: 'Test socket events emitted successfully' };
@@ -333,7 +438,6 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   testSocketUpdate(): { message: string } {
-    console.log('🧪 [IncidentController] test-socket-update endpoint called');
 
     // Create a mock updated incident for testing
     const mockUpdatedIncident = {
@@ -348,21 +452,13 @@ export class IncidentController {
         'Testing socket update functionality - Status changed to In Progress',
     };
 
-    console.log(
-      '📡 [IncidentController] Emitting test socket update events: incident_updated',
-    );
 
     if (io) {
-      console.log(
-        '📡 [IncidentController] Connected clients count:',
-        io.engine.clientsCount,
-      );
 
       const eventData = { incident: mockUpdatedIncident };
 
       // 1. General notification to all users (no popup)
       io.emit('incident_updated', eventData);
-      console.log('📡 [IncidentController] Broadcast update to ALL users');
 
       // 2. Targeted notification to assigned handler (with popup)
       io.to(`user_${mockUpdatedIncident.handler}`).emit(
@@ -372,13 +468,132 @@ export class IncidentController {
           message: `Test update: Incident ${mockUpdatedIncident.incident_number} has been updated`,
         },
       );
-      console.log(
-        `📡 [IncidentController] Targeted incident_updated_assigned sent to: ${mockUpdatedIncident.handler}`,
-      );
     } else {
-      console.log('❌ [IncidentController] Socket.IO instance not available');
     }
 
     return { message: 'Test socket update events emitted successfully' };
+  }
+
+  // File upload configuration
+  private getFileUploadOptions() {
+    return {
+      storage: diskStorage({
+        destination: './uploads/incident_attachments',
+        filename: (req, file, callback) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const fileExtension = extname(file.originalname);
+          callback(null, `${uniqueSuffix}${fileExtension}`);
+        },
+      }),
+      fileFilter: (req, file, callback) => {
+        // Check file type
+        const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+        const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+        
+        if (allowedTypes.includes(fileExtension)) {
+          callback(null, true);
+        } else {
+          callback(new BadRequestException('Only PDF, PNG, JPG, and JPEG files are allowed'), false);
+        }
+      },
+      limits: {
+        fileSize: 1024 * 1024, // 1MB limit
+      },
+    };
+  }
+
+  // Upload attachment endpoint
+  @Post('upload-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(FileInterceptor('attachment', {
+    storage: process.env.NODE_ENV === 'production' 
+      ? memoryStorage() // Use memory storage for Heroku
+      : diskStorage({
+          destination: (req, file, callback) => {
+            const uploadsPath = join(process.cwd(), 'uploads', 'incident_attachments');
+            try {
+              if (!fs.existsSync(uploadsPath)) {
+                fs.mkdirSync(uploadsPath, { recursive: true });
+              }
+              callback(null, uploadsPath);
+            } catch (error) {
+              console.error('Upload directory creation failed:', error);
+              callback(error, uploadsPath);
+            }
+          },
+          filename: (req, file, callback) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const fileExtension = extname(file.originalname);
+            callback(null, `${uniqueSuffix}${fileExtension}`);
+          },
+        }),
+    fileFilter: (req, file, callback) => {
+      const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+      const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+      
+      if (allowedTypes.includes(fileExtension)) {
+        callback(null, true);
+      } else {
+        callback(new BadRequestException('Only PDF, PNG, JPG, and JPEG files are allowed'), false);
+      }
+    },
+    limits: {
+      fileSize: 1024 * 1024, // 1MB limit
+    },
+  }))
+  async uploadAttachment(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // Handle production environment (memory storage)
+    if (process.env.NODE_ENV === 'production') {
+      // For production, we need to save the buffer to a temporary location
+      // or use cloud storage service like AWS S3, Cloudinary etc.
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1E9)}-${file.originalname}`;
+      
+      return {
+        success: true,
+        filename: filename,
+        originalName: file.originalname,
+        size: file.size,
+        buffer: file.buffer, // Available in memory storage
+        mimetype: file.mimetype,
+      };
+    }
+
+    // For local development (disk storage)
+    return {
+      success: true,
+      filename: file.filename,
+      originalName: file.originalname,
+      size: file.size,
+      path: file.path,
+    };
+  }
+
+  // Download attachment endpoint
+  @Get('download-attachment/:filename')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async downloadAttachment(@Param('filename') filename: string, @Res() res: Response) {
+    try {
+      const filePath = join(process.cwd(), 'uploads', 'incident_attachments', filename);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new BadRequestException('File not found');
+      }
+
+      // Set appropriate headers for download
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      
+      // Send file
+      res.sendFile(filePath);
+    } catch (error) {
+      throw new BadRequestException('Failed to download file');
+    }
   }
 }

@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { IncidentService } from '../incident.service';
 import { Incident } from '../entities/incident.entity';
 import { IncidentDto } from '../dto/incident.dto';
+import { IncidentHistory } from '../entities/incident-history.entity';
+import { Technician } from '../../technician/entities/technician.entity';
+import { CategoryItem } from '../../Categories/Entities/Categories.entity';
+import { SLTUser } from '../../sltusers/entities/sltuser.entity';
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -60,6 +64,22 @@ describe('IncidentService', () => {
           provide: getRepositoryToken(Incident),
           useValue: mockRepository,
         },
+        {
+          provide: getRepositoryToken(IncidentHistory),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(Technician),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(CategoryItem),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(SLTUser),
+          useValue: mockRepository,
+        },
       ],
     }).compile();
 
@@ -73,10 +93,46 @@ describe('IncidentService', () => {
 
   describe('incident create method (service)', () => {
     it('should create an incident successfully', async () => {
+      // Mock category item with proper relations
+      const mockCategoryItem = {
+        name: 'CAT015',
+        subCategory: {
+          mainCategory: {
+            id: 1,
+            name: 'Team1'
+          }
+        }
+      };
+
+      // Mock technician
+      const mockTechnician = {
+        id: 1,
+        serviceNum: 'T001',
+        team: 1,
+        level: 'Tier1',
+        active: true
+      };
+
+      // Mock SLT User
+      const mockSLTUser = {
+        serviceNum: 'SV001',
+        display_name: 'John Doe'
+      };
+
       //pretend the sequence returns a value
       mockRepository.query.mockResolvedValue([{ value: '1' }]);
       mockRepository.create.mockReturnValue(mockIncident);
       mockRepository.save.mockResolvedValue(mockIncident);
+      
+      // Mock findOne for CategoryItem
+      mockRepository.findOne
+        .mockResolvedValueOnce(mockCategoryItem) // for category lookup
+        .mockResolvedValueOnce(mockSLTUser) // for handler display name
+        .mockResolvedValueOnce(mockSLTUser); // for informant display name
+      
+      // Mock find for Technician (round-robin logic)
+      mockRepository.find.mockResolvedValue([mockTechnician]);
+      
       // Call the create method
       const result = await service.create(mockIncidentDto as IncidentDto);
 
@@ -86,6 +142,7 @@ describe('IncidentService', () => {
       expect(mockRepository.create).toHaveBeenCalledWith({
         ...mockIncidentDto,
         incident_number: 'IN1',
+        handler: 'T001', // Should be assigned from technician
       });
       expect(mockRepository.save).toHaveBeenCalledWith(mockIncident);
       expect(result).toEqual(mockIncident);
@@ -111,14 +168,58 @@ describe('IncidentService', () => {
       ).rejects.toThrow('Missing required field: location');
     });
 
-    it('should throw BadRequestException if required field "handler" is missing', async () => {
+    it('should auto-assign handler when handler field is missing', async () => {
+      // Mock category item with proper relations
+      const mockCategoryItem = {
+        name: 'CAT015',
+        subCategory: {
+          mainCategory: {
+            id: 1,
+            name: 'Team1'
+          }
+        }
+      };
+
+      // Mock technician
+      const mockTechnician = {
+        id: 1,
+        serviceNum: 'T001',
+        team: 1,
+        level: 'Tier1',
+        active: true
+      };
+
+      // Mock SLT User
+      const mockSLTUser = {
+        serviceNum: 'SV001',
+        display_name: 'John Doe'
+      };
+
       const invalidDto = { ...mockIncidentDto, handler: undefined };
-      await expect(
-        service.create(invalidDto as unknown as IncidentDto),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.create(invalidDto as unknown as IncidentDto),
-      ).rejects.toThrow('Missing required field: handler');
+      const expectedIncident = { ...mockIncident, handler: 'T001' };
+      
+      //pretend the sequence returns a value
+      mockRepository.query.mockResolvedValue([{ value: '1' }]);
+      mockRepository.create.mockReturnValue(expectedIncident);
+      mockRepository.save.mockResolvedValue(expectedIncident);
+      
+      // Mock findOne for CategoryItem
+      mockRepository.findOne
+        .mockResolvedValueOnce(mockCategoryItem) // for category lookup
+        .mockResolvedValueOnce(mockSLTUser) // for handler display name
+        .mockResolvedValueOnce(mockSLTUser); // for informant display name
+      
+      // Mock find for Technician (round-robin logic)
+      mockRepository.find.mockResolvedValue([mockTechnician]);
+
+      const result = await service.create(invalidDto as unknown as IncidentDto);
+      
+      expect(result.handler).toBe('T001'); // Should be auto-assigned
+      expect(mockRepository.create).toHaveBeenCalledWith({
+        ...invalidDto,
+        incident_number: 'IN1',
+        handler: 'T001', // Should be auto-assigned from technician
+      });
     });
 
     it('should throw BadRequestException if required field "category" is missing', async () => {
@@ -162,8 +263,37 @@ describe('IncidentService', () => {
     });
 
     it('should throw InternalServerErrorException on DB error', async () => {
+      // Mock category item with proper relations
+      const mockCategoryItem = {
+        name: 'CAT015',
+        subCategory: {
+          mainCategory: {
+            id: 1,
+            name: 'Team1'
+          }
+        }
+      };
+
+      // Mock technician
+      const mockTechnician = {
+        id: 1,
+        serviceNum: 'T001',
+        team: 1,
+        level: 'Tier1',
+        active: true
+      };
+
       mockRepository.query.mockResolvedValue([{ value: '1' }]);
+      
+      // Mock findOne for CategoryItem (success)
+      mockRepository.findOne.mockResolvedValue(mockCategoryItem);
+      
+      // Mock find for Technician (success)
+      mockRepository.find.mockResolvedValue([mockTechnician]);
+      
+      // Mock save to fail
       mockRepository.save.mockRejectedValue(new Error('DB error'));
+      
       await expect(
         service.create(mockIncidentDto as IncidentDto),
       ).rejects.toThrow(InternalServerErrorException);

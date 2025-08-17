@@ -34,13 +34,14 @@ export class CategoryController {
   // Main Category Endpoints
   @Post('main')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async createMainCategory(
     @Body() dto: MainCategoryDto,
   ): Promise<MainCategory> {
     try {
       return await this.categoryService.createMainCategory(dto);
     } catch (error) {
+
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('already exists')) {
         throw new BadRequestException({
@@ -66,7 +67,7 @@ export class CategoryController {
 
   @Put('main/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async updateMainCategory(
     @Param('id') id: string,
     @Body() dto: MainCategoryDto,
@@ -82,7 +83,7 @@ export class CategoryController {
   @Delete('main/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async deleteMainCategory(@Param('id') id: string): Promise<void> {
     try {
       await this.categoryService.deleteMainCategory(id);
@@ -94,7 +95,7 @@ export class CategoryController {
   // Sub Category Endpoints
   @Post('sub')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async createSubCategory(@Body() dto: SubCategoryDto): Promise<SubCategory> {
     try {
       return await this.categoryService.createSubCategory(dto);
@@ -124,7 +125,7 @@ export class CategoryController {
 
   @Put('sub/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async updateSubCategory(
     @Param('id') id: string,
     @Body() dto: SubCategoryDto,
@@ -140,7 +141,7 @@ export class CategoryController {
   @Delete('sub/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async deleteSubCategory(@Param('id') id: string): Promise<void> {
     try {
       await this.categoryService.deleteSubCategory(id);
@@ -168,7 +169,7 @@ export class CategoryController {
   // Category Item Endpoints
   @Post('item')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async createCategoryItem(
     @Body() dto: CategoryItemDto,
   ): Promise<CategoryItem> {
@@ -200,7 +201,7 @@ export class CategoryController {
 
   @Put('item/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async updateCategoryItem(
     @Param('id') id: string,
     @Body() dto: CategoryItemDto,
@@ -216,7 +217,7 @@ export class CategoryController {
   @Delete('item/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   async deleteCategoryItem(@Param('id') id: string): Promise<void> {
     try {
       await this.categoryService.deleteCategoryItem(id);

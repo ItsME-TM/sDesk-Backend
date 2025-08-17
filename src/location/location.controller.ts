@@ -26,18 +26,16 @@ export class LocationController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Create a new location entry
   async create(@Body() dto: CreateLocationDto) {
     try {
       return await this.locationService.create(dto);
     } catch (err) {
-      console.error('Create Location Error:', err); // Error log added
       if (err.code === '23505') {
         // Unique constraint violation (Postgres)
         throw new BadRequestException('Location Code must be unique');
       }
-      //console.error('Create Error:', err);
       throw new InternalServerErrorException('Something went wrong');
     }
   }
@@ -50,7 +48,6 @@ export class LocationController {
     try {
       return await this.locationService.findAll();
     } catch (err) {
-      //console.error('FindAll Error:', err);
       throw new InternalServerErrorException('Unable to fetch locations');
     }
   }
@@ -73,7 +70,7 @@ export class LocationController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Update a location entry by id
   async update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     try {
@@ -86,7 +83,7 @@ export class LocationController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @Roles('superAdmin')
   // Delete a location entry by id
   async remove(@Param('id') id: string) {
     try {

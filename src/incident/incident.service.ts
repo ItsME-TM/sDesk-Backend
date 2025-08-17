@@ -12,9 +12,13 @@ import { INCIDENT_REQUIRED_FIELDS } from './incident.interface';
 import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
+import { SLTUser } from '../sltusers/entities/sltuser.entity';
 
 @Injectable()
 export class IncidentService {
+  // Round-robin assignment tracking for each team
+  private teamAssignmentIndex: Map<string, number> = new Map();
+
   constructor(
     @InjectRepository(Incident)
     private incidentRepository: Repository<Incident>,
@@ -24,7 +28,22 @@ export class IncidentService {
     private incidentHistoryRepository: Repository<IncidentHistory>,
     @InjectRepository(CategoryItem)
     private categoryItemRepository: Repository<CategoryItem>,
+    @InjectRepository(SLTUser)
+    private sltUserRepository: Repository<SLTUser>,
   ) {}
+
+  // Helper method to get display_name from slt_users table by serviceNum
+  private async getDisplayNameByServiceNum(serviceNum: string): Promise<string> {
+    if (!serviceNum) return serviceNum;
+    try {
+      const user = await this.sltUserRepository.findOne({
+        where: { serviceNum: serviceNum }
+      });
+      return user ? user.display_name : serviceNum;
+    } catch (error) {
+      return serviceNum;
+    }
+  }
 
   async create(incidentDto: IncidentDto): Promise<Incident> {
     try {
@@ -65,45 +84,54 @@ export class IncidentService {
         );
       }
 
-      console.log(
-        `🔍 Found team ID: ${mainCategoryId} for category: ${incidentDto.category}`,
-      );
-      console.log(
-        `🔍 Team ID type: ${typeof mainCategoryId}, value: '${mainCategoryId}'`,
-      );
-
       // Step 3: Get the team name from mainCategory
       const teamName = categoryItem.subCategory?.mainCategory?.name;
-      console.log(`  Team name: ${teamName}`);
 
-      // Step 4: Try to find technician by all possible combinations (deep robust search)
+      // Step 4: Get all active tier1 technicians for the team using round-robin assignment
       let assignedTechnician: Technician | null = null;
       const levelVariants = ['Tier1', 'tier1'];
-      for (const team of [mainCategoryId, teamName]) {
+      const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
+      
+      for (const team of teamIdentifiers) {
         for (const level of levelVariants) {
-          if (!team) continue;
-          assignedTechnician = await this.technicianRepository.findOne({
+          // Find all active tier1 technicians for this team
+          const availableTechnicians = await this.technicianRepository.find({
             where: {
               team: team,
               level: level,
               active: true,
             },
+            order: {
+              id: 'ASC', // Consistent ordering for round-robin
+            },
           });
-          if (assignedTechnician) break;
+
+          if (availableTechnicians.length > 0) {
+            // Implement round-robin assignment
+            const teamKey = `${team}_${level}`;
+            const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+            
+            // Select the technician at current index
+            assignedTechnician = availableTechnicians[currentIndex];
+            
+            // Update index for next assignment (wrap around to 0 if at end)
+            const nextIndex = (currentIndex + 1) % availableTechnicians.length;
+            this.teamAssignmentIndex.set(teamKey, nextIndex);
+            
+            break;
+          }
         }
         if (assignedTechnician) break;
       }
 
-      // Step 5: Assign the first available technician
+      // Step 5: Assign the selected technician
       if (!assignedTechnician) {
         throw new BadRequestException(
           `No active tier1 technician found for team '${mainCategoryId}' (category: ${incidentDto.category})`,
         );
       }
 
-      console.log(
-        `✅ Assigning technician: ${assignedTechnician.serviceNum} (${assignedTechnician.name}) to incident: ${incidentNumber}`,
-      );
+      // Technician assignment complete
 
       const incident = this.incidentRepository.create({
         ...incidentDto,
@@ -113,16 +141,21 @@ export class IncidentService {
 
       const savedIncident = await this.incidentRepository.save(incident);
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+
       // Create initial incident history entry
-      const initialHistory = this.incidentHistoryRepository.create({
-        incidentNumber: savedIncident.incident_number,
-        status: savedIncident.status,
-        assignedTo: savedIncident.handler,
-        updatedBy: savedIncident.informant, // Assuming informant is the initial creator/reporter
-        comments: incidentDto.description, // The description from the initial incident creation
-        category: savedIncident.category,
-        location: savedIncident.location,
-      });
+      const initialHistory = new IncidentHistory();
+      initialHistory.incidentNumber = savedIncident.incident_number;
+      initialHistory.status = savedIncident.status;
+      initialHistory.assignedTo = assignedToDisplayName;
+      initialHistory.updatedBy = updatedByDisplayName;
+      initialHistory.comments = incidentDto.description || '';
+      initialHistory.category = savedIncident.category;
+      initialHistory.location = savedIncident.location;
+      initialHistory.attachment = incidentDto.attachmentFilename || '';
+      initialHistory.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(initialHistory);
 
       return savedIncident;
@@ -155,9 +188,6 @@ export class IncidentService {
     }
   }
   async getAssignedByMe(informant: string): Promise<Incident[]> {
-    console.log(
-      `🔍 Incident Service: getAssignedByMe called with informant: ${informant}`,
-    );
 
     try {
       if (!informant) {
@@ -165,14 +195,10 @@ export class IncidentService {
       }
 
       const trimmedInformant = informant.trim();
-      console.log(
-        `🔍 Incident Service: Searching for informant '${trimmedInformant}'`,
-      );
 
       // First, clean up any existing data with whitespace issues
       await this.cleanupInformantWhitespace();
 
-      console.log('🔍 Incident Service: About to execute database query...');
 
       // Use LIKE with trimmed spaces to handle potential whitespace issues
       const incidents = await this.incidentRepository
@@ -182,14 +208,9 @@ export class IncidentService {
         })
         .getMany();
 
-      console.log(
-        `✅ Incident Service: Found ${incidents.length} incidents for informant '${trimmedInformant}'`,
-      );
-      console.log('✅ Incident Service: Incidents found:', incidents);
 
       return incidents;
     } catch (error) {
-      console.error('❌ Incident Service: Error in getAssignedByMe:', error);
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -209,9 +230,6 @@ export class IncidentService {
       for (const incident of incidents) {
         const trimmedInformant = incident.informant?.trim();
         if (incident.informant !== trimmedInformant) {
-          console.log(
-            `Cleaning informant: '${incident.informant}' -> '${trimmedInformant}'`,
-          );
           incident.informant = trimmedInformant;
           updates.push(this.incidentRepository.save(incident));
         }
@@ -219,12 +237,9 @@ export class IncidentService {
 
       if (updates.length > 0) {
         await Promise.all(updates);
-        console.log(
-          `Cleaned up ${updates.length} incidents with whitespace issues`,
-        );
       }
     } catch (error) {
-      console.error('Error cleaning up informant whitespace:', error);
+      // Silent fail for cleanup
     }
   }
 
@@ -278,53 +293,110 @@ export class IncidentService {
 
       // --- Auto-assign Tier2 technician if requested ---
       if (incidentDto.automaticallyAssignForTier2) {
+        console.log('🔍 Starting Tier2 assignment process...');
+        
         // Find CategoryItem by name (category)
         const categoryItem = await this.categoryItemRepository.findOne({
           where: { name: incidentDto.category || incident.category },
           relations: ['subCategory', 'subCategory.mainCategory'],
         });
+        
         if (!categoryItem) {
           throw new BadRequestException(
             `Category '${incidentDto.category || incident.category}' not found`,
           );
         }
+        
         const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
         const teamName = categoryItem.subCategory?.mainCategory?.name;
+        
+        console.log(`📋 Category: ${incidentDto.category || incident.category}`);
+        console.log(`🏢 Team ID: ${mainCategoryId}, Team Name: ${teamName}`);
+        
         let tier2Tech: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
-        for (const team of [mainCategoryId, teamName]) {
+        
+        // Search by different combinations of team identifiers
+        const teamIdentifiers = [
+          mainCategoryId?.toString(), // Convert to string
+          mainCategoryId, // Keep as number
+          teamName,
+          teamName?.toString(),
+        ].filter(Boolean); // Remove null/undefined values
+        
+        console.log(`🔍 Searching for Tier2 technicians with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
+        
+        for (const team of teamIdentifiers) {
           for (const level of levelVariants) {
             if (!team) continue;
-            const found = await this.technicianRepository.find({
+            
+            console.log(`🔍 Searching: team=${team}, level=${level}`);
+            
+            // Try matching both team and teamId fields
+            const foundByTeam = await this.technicianRepository.find({
               where: { team: team, level: level, active: true },
             });
-            if (found && found.length > 0) {
-              candidates.push(...found);
+            
+            const foundByTeamId = await this.technicianRepository.find({
+              where: { teamId: team, level: level, active: true },
+            });
+            
+            console.log(`🔍 Found by team field: ${foundByTeam.length}, Found by teamId field: ${foundByTeamId.length}`);
+            
+            // Combine results and remove duplicates
+            const allFound = [...foundByTeam, ...foundByTeamId];
+            const uniqueFound = allFound.filter((tech, index, self) => 
+              index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+            );
+            
+            if (uniqueFound.length > 0) {
+              console.log(`✅ Found ${uniqueFound.length} technicians: ${uniqueFound.map(t => t.serviceNum).join(', ')}`);
+              candidates.push(...uniqueFound);
             }
           }
         }
-        if (candidates.length > 0) {
+        
+        // Remove duplicates from final candidates array
+        const uniqueCandidates = candidates.filter((tech, index, self) => 
+          index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+        );
+        
+        console.log(`🎯 Total unique candidates: ${uniqueCandidates.length}`);
+        
+        if (uniqueCandidates.length > 0) {
           // Randomly select a technician
-          tier2Tech = candidates[Math.floor(Math.random() * candidates.length)];
+          tier2Tech = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
           incidentDto.handler = tier2Tech.serviceNum;
+          console.log(`✅ Assigned to Tier2 technician: ${tier2Tech.serviceNum} (${tier2Tech.name})`);
         } else {
+          // Let's also check what technicians exist for debugging
+          const allTier2Techs = await this.technicianRepository.find({
+            where: { level: 'Tier2', active: true },
+          });
+          console.log(`🔍 All active Tier2 technicians in database: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team}, teamId: ${t.teamId})`).join(', ')}`);
+          
           throw new BadRequestException(
-            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category})`,
+            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
           );
         }
       }
 
+      // Get display names for incident history
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
+
       // --- IncidentHistory entry ---
-      const history = this.incidentHistoryRepository.create({
-        incidentNumber: incident_number,
-        status: incidentDto.status || incident.status,
-        assignedTo: incidentDto.handler || incident.handler,
-        updatedBy: incidentDto.update_by || incident.update_by,
-        comments: incidentDto.description || incident.description,
-        category: incidentDto.category || incident.category,
-        location: incidentDto.location || incident.location,
-      });
+      const history = new IncidentHistory();
+      history.incidentNumber = incident_number;
+      history.status = incidentDto.status || incident.status;
+      history.assignedTo = assignedToDisplayName;
+      history.updatedBy = updatedByDisplayName;
+      history.comments = incidentDto.description || incident.description || '';
+      history.category = incidentDto.category || incident.category;
+      history.location = incidentDto.location || incident.location;
+      history.attachment = incidentDto.attachmentFilename || '';
+      history.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(history);
       // --- End IncidentHistory entry ---
       Object.assign(incident, incidentDto);
@@ -442,4 +514,3 @@ async getDashboardStats(params?: {
     });
   }
 }
-

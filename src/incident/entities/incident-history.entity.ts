@@ -28,4 +28,10 @@ export class IncidentHistory {
 
   @Column({ nullable: true })
   location: string;
+
+  @Column({ nullable: true })
+  attachment: string; // Store attachment filename
+
+  @Column({ nullable: true })
+  attachmentOriginalName: string; // Store original filename for display
 }

@@ -23,6 +23,7 @@ import { Location } from './location/entities/location.entity';
 import { TechnicianModule } from './technician/technician.module';
 import { LocationModule } from './location/location.module';
 
+
 dotenv.config();
 
 @Module({
@@ -56,6 +57,7 @@ dotenv.config();
     SLTUsersModule,
     TechnicianModule,
     LocationModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],
