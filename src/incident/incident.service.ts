@@ -293,39 +293,91 @@ export class IncidentService {
 
       // --- Auto-assign Tier2 technician if requested ---
       if (incidentDto.automaticallyAssignForTier2) {
+        console.log('🔍 Starting Tier2 assignment process...');
+        
         // Find CategoryItem by name (category)
         const categoryItem = await this.categoryItemRepository.findOne({
           where: { name: incidentDto.category || incident.category },
           relations: ['subCategory', 'subCategory.mainCategory'],
         });
+        
         if (!categoryItem) {
           throw new BadRequestException(
             `Category '${incidentDto.category || incident.category}' not found`,
           );
         }
+        
         const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
         const teamName = categoryItem.subCategory?.mainCategory?.name;
+        
+        console.log(`📋 Category: ${incidentDto.category || incident.category}`);
+        console.log(`🏢 Team ID: ${mainCategoryId}, Team Name: ${teamName}`);
+        
         let tier2Tech: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
-        for (const team of [mainCategoryId, teamName]) {
+        
+        // Search by different combinations of team identifiers
+        const teamIdentifiers = [
+          mainCategoryId?.toString(), // Convert to string
+          mainCategoryId, // Keep as number
+          teamName,
+          teamName?.toString(),
+        ].filter(Boolean); // Remove null/undefined values
+        
+        console.log(`🔍 Searching for Tier2 technicians with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
+        
+        for (const team of teamIdentifiers) {
           for (const level of levelVariants) {
             if (!team) continue;
-            const found = await this.technicianRepository.find({
+            
+            console.log(`🔍 Searching: team=${team}, level=${level}`);
+            
+            // Try matching both team and teamId fields
+            const foundByTeam = await this.technicianRepository.find({
               where: { team: team, level: level, active: true },
             });
-            if (found && found.length > 0) {
-              candidates.push(...found);
+            
+            const foundByTeamId = await this.technicianRepository.find({
+              where: { teamId: team, level: level, active: true },
+            });
+            
+            console.log(`🔍 Found by team field: ${foundByTeam.length}, Found by teamId field: ${foundByTeamId.length}`);
+            
+            // Combine results and remove duplicates
+            const allFound = [...foundByTeam, ...foundByTeamId];
+            const uniqueFound = allFound.filter((tech, index, self) => 
+              index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+            );
+            
+            if (uniqueFound.length > 0) {
+              console.log(`✅ Found ${uniqueFound.length} technicians: ${uniqueFound.map(t => t.serviceNum).join(', ')}`);
+              candidates.push(...uniqueFound);
             }
           }
         }
-        if (candidates.length > 0) {
+        
+        // Remove duplicates from final candidates array
+        const uniqueCandidates = candidates.filter((tech, index, self) => 
+          index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+        );
+        
+        console.log(`🎯 Total unique candidates: ${uniqueCandidates.length}`);
+        
+        if (uniqueCandidates.length > 0) {
           // Randomly select a technician
-          tier2Tech = candidates[Math.floor(Math.random() * candidates.length)];
+          tier2Tech = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
           incidentDto.handler = tier2Tech.serviceNum;
+          console.log(`✅ Assigned to Tier2 technician: ${tier2Tech.serviceNum} (${tier2Tech.name})`);
         } else {
+          // Let's also check what technicians exist for debugging
+          const allTier2Techs = await this.technicianRepository.find({
+            where: { level: 'Tier2', active: true },
+          });
+          console.log(`🔍 All active Tier2 technicians in database: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team}, teamId: ${t.teamId})`).join(', ')}`);
+          
           throw new BadRequestException(
-            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category})`,
+            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
           );
         }
       }

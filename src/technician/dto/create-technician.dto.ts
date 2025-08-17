@@ -55,6 +55,9 @@ tier: number;
   @IsString()
   level: string;
 
+  @IsOptional()
+  @IsString()
+  teamId?: string;
 
   @IsString()
   teamLevel: string;
