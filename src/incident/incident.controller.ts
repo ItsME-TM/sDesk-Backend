@@ -146,9 +146,17 @@ export class IncidentController {
   @Get('dashboard-stats')
   async getDashboardStats(
     @Query('userParentCategory') userParentCategory?: string,
+    @Query('userType') userType?: string,
+    @Query('technicianId') technicianId?: string,
+    @Query('teamName') teamName?: string,
   ): Promise<any> {
     try {
-      return await this.incidentService.getDashboardStats(userParentCategory);
+      return await this.incidentService.getDashboardStats({
+        userParentCategory,
+        userType,
+        technicianId,
+        teamName
+      });
     } catch (error) {
       throw error;
     }
