@@ -24,30 +24,36 @@ export class CategoryService {
   ) {}
 
   private async generateMainCategoryCode(): Promise<string> {
-    // Find the max numeric suffix for category_code
     const result = await this.mainCategoryRepository
       .createQueryBuilder('mainCategory')
-      .select('MAX(CAST(SUBSTRING(mainCategory.category_code, 5) AS int))', 'max')
+      .select(
+        'MAX(CAST(SUBSTRING(mainCategory.category_code, 5) AS int))',
+        'max',
+      )
       .getRawOne();
     const max = result?.max ? parseInt(result.max, 10) : 0;
     return `MAIN${(max + 1).toString().padStart(3, '0')}`;
   }
 
   private async generateSubCategoryCode(): Promise<string> {
-    // Find the max numeric suffix for category_code
     const result = await this.subCategoryRepository
       .createQueryBuilder('subCategory')
-      .select('MAX(CAST(SUBSTRING(subCategory.category_code, 4) AS int))', 'max')
+      .select(
+        'MAX(CAST(SUBSTRING(subCategory.category_code, 4) AS int))',
+        'max',
+      )
       .getRawOne();
     const max = result?.max ? parseInt(result.max, 10) : 0;
     return `SUB${(max + 1).toString().padStart(3, '0')}`;
   }
 
   private async generateCategoryItemCode(): Promise<string> {
-    // Find the max numeric suffix for category_code
     const result = await this.categoryItemRepository
       .createQueryBuilder('categoryItem')
-      .select('MAX(CAST(SUBSTRING(categoryItem.category_code, 4) AS int))', 'max')
+      .select(
+        'MAX(CAST(SUBSTRING(categoryItem.category_code, 4) AS int))',
+        'max',
+      )
       .getRawOne();
     const max = result?.max ? parseInt(result.max, 10) : 0;
     return `CAT${(max + 1).toString().padStart(3, '0')}`;
@@ -56,14 +62,15 @@ export class CategoryService {
   async createMainCategory(
     createMainCategoryDto: MainCategoryDto,
   ): Promise<MainCategory> {
-    // Check for duplicate name (case-insensitive, trimmed)
     const nameToCheck = createMainCategoryDto.name.trim().toLowerCase();
     const existing = await this.mainCategoryRepository
       .createQueryBuilder('mainCategory')
       .where('LOWER(TRIM(mainCategory.name)) = :name', { name: nameToCheck })
       .getOne();
     if (existing) {
-      throw new Error(`Main category with name '${createMainCategoryDto.name}' already exists`);
+      throw new Error(
+        `Main category with name '${createMainCategoryDto.name}' already exists`,
+      );
     }
     const category_code = await this.generateMainCategoryCode();
     const mainCategory = this.mainCategoryRepository.create({
@@ -125,7 +132,6 @@ export class CategoryService {
       );
     }
 
-    // Check for duplicate subcategory name under the same main category (case-insensitive, trimmed)
     const nameToCheck = name.trim().toLowerCase();
     const existing = await this.subCategoryRepository
       .createQueryBuilder('subCategory')
@@ -134,7 +140,9 @@ export class CategoryService {
       .andWhere('mainCategory.id = :mainCategoryId', { mainCategoryId })
       .getOne();
     if (existing) {
-      throw new Error(`Sub category with name '${name}' already exists under this main category`);
+      throw new Error(
+        `Sub category with name '${name}' already exists under this main category`,
+      );
     }
 
     const category_code = await this.generateSubCategoryCode();
@@ -224,26 +232,28 @@ export class CategoryService {
       );
     }
 
-    // Check for duplicate category item name under the same sub category (case-insensitive, trimmed)
     const nameToCheck = name.trim().toLowerCase();
     const existing = await this.categoryItemRepository
       .createQueryBuilder('categoryItem')
       .where('LOWER(TRIM(categoryItem.name)) = :name', { name: nameToCheck })
-      .andWhere('categoryItem.subCategoryId = :subCategoryId', { subCategoryId: subCategoryIdToUse })
+      .andWhere('categoryItem.subCategoryId = :subCategoryId', {
+        subCategoryId: subCategoryIdToUse,
+      })
       .getOne();
     if (existing) {
-      throw new Error(`Category item with name '${name}' already exists under this sub category`);
+      throw new Error(
+        `Category item with name '${name}' already exists under this sub category`,
+      );
     }
 
     const category_code = await this.generateCategoryItemCode();
 
-    // Create the item without the relation, then assign the loaded entity
     const categoryItem = this.categoryItemRepository.create({
       ...categoryItemData,
       name,
       category_code,
     });
-    categoryItem.subCategory = subCategory; // assign the loaded entity after create
+    categoryItem.subCategory = subCategory;
 
     try {
       const saved = await this.categoryItemRepository.save(categoryItem);
@@ -322,7 +332,9 @@ export class CategoryService {
     return { category_code: code };
   }
 
-  async findSubCategoriesByMainCategoryId(mainCategoryId: string): Promise<SubCategory[]> {
+  async findSubCategoriesByMainCategoryId(
+    mainCategoryId: string,
+  ): Promise<SubCategory[]> {
     return this.subCategoryRepository.find({
       where: { mainCategory: { id: mainCategoryId } },
       relations: ['mainCategory'],
