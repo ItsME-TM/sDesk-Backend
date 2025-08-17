@@ -16,6 +16,9 @@ import { SLTUser } from '../sltusers/entities/sltuser.entity';
 
 @Injectable()
 export class IncidentService {
+  // Round-robin assignment tracking for each team
+  private teamAssignmentIndex: Map<string, number> = new Map();
+
   constructor(
     @InjectRepository(Incident)
     private incidentRepository: Repository<Incident>,
@@ -84,25 +87,44 @@ export class IncidentService {
       // Step 3: Get the team name from mainCategory
       const teamName = categoryItem.subCategory?.mainCategory?.name;
 
-      // Step 4: Try to find technician by all possible combinations (deep robust search)
+      // Step 4: Get all active tier1 technicians for the team using round-robin assignment
       let assignedTechnician: Technician | null = null;
       const levelVariants = ['Tier1', 'tier1'];
-      for (const team of [mainCategoryId, teamName]) {
+      const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
+      
+      for (const team of teamIdentifiers) {
         for (const level of levelVariants) {
-          if (!team) continue;
-          assignedTechnician = await this.technicianRepository.findOne({
+          // Find all active tier1 technicians for this team
+          const availableTechnicians = await this.technicianRepository.find({
             where: {
               team: team,
               level: level,
               active: true,
             },
+            order: {
+              id: 'ASC', // Consistent ordering for round-robin
+            },
           });
-          if (assignedTechnician) break;
+
+          if (availableTechnicians.length > 0) {
+            // Implement round-robin assignment
+            const teamKey = `${team}_${level}`;
+            const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+            
+            // Select the technician at current index
+            assignedTechnician = availableTechnicians[currentIndex];
+            
+            // Update index for next assignment (wrap around to 0 if at end)
+            const nextIndex = (currentIndex + 1) % availableTechnicians.length;
+            this.teamAssignmentIndex.set(teamKey, nextIndex);
+            
+            break;
+          }
         }
         if (assignedTechnician) break;
       }
 
-      // Step 5: Assign the first available technician
+      // Step 5: Assign the selected technician
       if (!assignedTechnician) {
         throw new BadRequestException(
           `No active tier1 technician found for team '${mainCategoryId}' (category: ${incidentDto.category})`,
