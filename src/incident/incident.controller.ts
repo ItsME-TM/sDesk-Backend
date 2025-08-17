@@ -263,6 +263,7 @@ export class IncidentController {
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<Incident> {
     try {
+      console.log('PUT /incident/:incident_number/with-attachment called', { incident_number });
       // If file is uploaded, add attachment info to the DTO
       if (file) {
         // Handle production environment (memory storage)
@@ -270,7 +271,6 @@ export class IncidentController {
           // Generate a unique filename for production
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
           const filename = `${uniqueSuffix}-${file.originalname}`;
-          
           incidentDto.attachmentFilename = filename;
           incidentDto.attachmentOriginalName = file.originalname;
           incidentDto.attachmentBuffer = file.buffer; // Store buffer for cloud storage
@@ -296,6 +296,7 @@ export class IncidentController {
 
       return updatedIncident;
     } catch (error) {
+      console.error('Error in PUT /incident/:incident_number/with-attachment:', error);
       // If there's an error and a file was uploaded, clean it up (only for local storage)
       if (file && file.path && process.env.NODE_ENV !== 'production') {
         try {
@@ -304,11 +305,9 @@ export class IncidentController {
           console.error('Failed to clean up uploaded file:', cleanupError);
         }
       }
-      
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
-      
       const message = error instanceof Error ? error.message : String(error);
       throw new InternalServerErrorException('Failed to update incident: ' + message);
     }
