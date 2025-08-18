@@ -445,15 +445,97 @@ async getDashboardStats(params?: {
   }): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
+      const { userParentCategory, userType, technicianId } = params || {};
       
-      const { userParentCategory, userType } = params || {};
-      
-      const filteredIncidents = userParentCategory 
+      let filteredIncidents = userParentCategory 
         ? incidents.filter(inc => inc.category && inc.category.includes(userParentCategory))
         : incidents;
 
       const today = new Date().toISOString().split('T')[0];
 
+      // Helper function to check if a date matches today
+      const isToday = (dateString: string) => {
+        if (!dateString) return false;
+        try {
+          const dateOnly = new Date(dateString).toISOString().split('T')[0];
+          return dateOnly === today;
+        } catch (error) {
+          return false;
+        }
+      };
+
+      // For Technician role, we need special filtering
+      if (userType?.toLowerCase() === 'technician' && technicianId) {
+        // Get technician's serviceNum and display name
+        const technician = await this.technicianRepository.findOne({
+          where: { id: parseInt(technicianId) },
+          relations: ['user']
+        });
+        
+        if (!technician) {
+          throw new NotFoundException(`Technician with id ${technicianId} not found`);
+        }
+
+        const technicianServiceNum = technician.serviceNum;
+        const technicianDisplayName = technician.name;
+
+        // For today's counts: filter by handler (serviceNum) and today's date
+        const technicianTodayIncidents = filteredIncidents.filter(inc => 
+          inc.handler === technicianServiceNum && isToday(inc.update_on)
+        );
+
+        // For total counts: get from incident history where assignedTo matches display name
+        const incidentHistory = await this.incidentHistoryRepository.find({
+          where: { assignedTo: technicianDisplayName }
+        });
+
+        // Get unique incident numbers from history
+        const uniqueIncidentNumbers = [...new Set(incidentHistory.map(h => h.incidentNumber))];
+        const technicianTotalIncidents = incidents.filter(inc => 
+          uniqueIncidentNumbers.includes(inc.incident_number)
+        );
+
+        const statusCounts = {
+          'Open': technicianTotalIncidents.filter(inc => inc.status === 'Open').length,
+          'Hold': technicianTotalIncidents.filter(inc => inc.status === 'Hold').length,
+          'In Progress': technicianTotalIncidents.filter(inc => inc.status === 'In Progress').length,
+          'Closed': technicianTotalIncidents.filter(inc => inc.status === 'Closed').length,
+        };
+
+        const priorityCounts = {
+          'Medium': technicianTotalIncidents.filter(inc => inc.priority === 'Medium').length,
+          'High': technicianTotalIncidents.filter(inc => inc.priority === 'High').length,
+          'Critical': technicianTotalIncidents.filter(inc => inc.priority === 'Critical').length,
+          'High (Today)': technicianTodayIncidents.filter(inc => inc.priority === 'High').length,
+        };
+
+        const todayStats = {
+          'Open (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Open').length,
+          'Hold (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Hold').length,
+          'In Progress (Today)': technicianTodayIncidents.filter(inc => inc.status === 'In Progress').length,
+          'Closed (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Closed').length,
+        };
+
+        const overallStatusCounts = {
+          'Open': statusCounts['Open'],
+          'Hold': statusCounts['Hold'],
+          'In Progress': statusCounts['In Progress'],
+          'Closed': statusCounts['Closed'],
+          'Open (Today)': todayStats['Open (Today)'],
+          'Hold (Today)': todayStats['Hold (Today)'],
+          'In Progress (Today)': todayStats['In Progress (Today)'],
+          'Closed (Today)': todayStats['Closed (Today)'],
+        };
+
+        return {
+          statusCounts,
+          priorityCounts,
+          todayStats,
+          overallStatusCounts,
+        };
+      }
+
+      // Default logic for other user types (Super Admin, etc.)
       const statusCounts = {
         'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
         'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
@@ -468,10 +550,10 @@ async getDashboardStats(params?: {
       };
 
       const todayStats = {
-        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
-        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
-        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && isToday(inc.update_on)).length,
+        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && isToday(inc.update_on)).length,
+        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && isToday(inc.update_on)).length,
+        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && isToday(inc.update_on)).length,
       };
 
       // For Super Admin users, always return overall counts (all incidents)
@@ -484,10 +566,10 @@ async getDashboardStats(params?: {
         'Hold': countsSource.filter(inc => inc.status === 'Hold').length,
         'In Progress': countsSource.filter(inc => inc.status === 'In Progress').length,
         'Closed': countsSource.filter(inc => inc.status === 'Closed').length,
-        'Open (Today)': countsSource.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Hold (Today)': countsSource.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
-        'In Progress (Today)': countsSource.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
-        'Closed (Today)': countsSource.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Open (Today)': countsSource.filter(inc => inc.status === 'Open' && isToday(inc.update_on)).length,
+        'Hold (Today)': countsSource.filter(inc => inc.status === 'Hold' && isToday(inc.update_on)).length,
+        'In Progress (Today)': countsSource.filter(inc => inc.status === 'In Progress' && isToday(inc.update_on)).length,
+        'Closed (Today)': countsSource.filter(inc => inc.status === 'Closed' && isToday(inc.update_on)).length,
       };
 
       return {
