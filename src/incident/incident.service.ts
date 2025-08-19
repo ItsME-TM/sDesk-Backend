@@ -485,7 +485,6 @@ export class IncidentService {
       const today = new Date().toISOString().split('T')[0];
 
       const statusCounts = {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
         Open: filteredIncidents.filter((inc) => inc.status === 'Open').length,
         Hold: filteredIncidents.filter((inc) => inc.status === 'Hold').length,
         'In Progress': filteredIncidents.filter(
