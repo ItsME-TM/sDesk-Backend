@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Injectable,
   BadRequestException,
@@ -33,11 +35,13 @@ export class IncidentService {
   ) {}
 
   // Helper method to get display_name from slt_users table by serviceNum
-  private async getDisplayNameByServiceNum(serviceNum: string): Promise<string> {
+  private async getDisplayNameByServiceNum(
+    serviceNum: string,
+  ): Promise<string> {
     if (!serviceNum) return serviceNum;
     try {
       const user = await this.sltUserRepository.findOne({
-        where: { serviceNum: serviceNum }
+        where: { serviceNum: serviceNum },
       });
       return user ? user.display_name : serviceNum;
     } catch (error) {
@@ -91,7 +95,7 @@ export class IncidentService {
       let assignedTechnician: Technician | null = null;
       const levelVariants = ['Tier1', 'tier1'];
       const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
-      
+
       for (const team of teamIdentifiers) {
         for (const level of levelVariants) {
           // Find all active tier1 technicians for this team
@@ -110,14 +114,14 @@ export class IncidentService {
             // Implement round-robin assignment
             const teamKey = `${team}_${level}`;
             const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
-            
+
             // Select the technician at current index
             assignedTechnician = availableTechnicians[currentIndex];
-            
+
             // Update index for next assignment (wrap around to 0 if at end)
             const nextIndex = (currentIndex + 1) % availableTechnicians.length;
             this.teamAssignmentIndex.set(teamKey, nextIndex);
-            
+
             break;
           }
         }
@@ -142,8 +146,12 @@ export class IncidentService {
       const savedIncident = await this.incidentRepository.save(incident);
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
-      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(
+        savedIncident.handler,
+      );
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(
+        savedIncident.informant,
+      );
 
       // Create initial incident history entry
       const initialHistory = new IncidentHistory();
@@ -155,7 +163,8 @@ export class IncidentService {
       initialHistory.category = savedIncident.category;
       initialHistory.location = savedIncident.location;
       initialHistory.attachment = incidentDto.attachmentFilename || '';
-      initialHistory.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
+      initialHistory.attachmentOriginalName =
+        incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(initialHistory);
 
       return savedIncident;
@@ -188,7 +197,6 @@ export class IncidentService {
     }
   }
   async getAssignedByMe(informant: string): Promise<Incident[]> {
-
     try {
       if (!informant) {
         throw new BadRequestException('informant is required');
@@ -199,7 +207,6 @@ export class IncidentService {
       // First, clean up any existing data with whitespace issues
       await this.cleanupInformantWhitespace();
 
-
       // Use LIKE with trimmed spaces to handle potential whitespace issues
       const incidents = await this.incidentRepository
         .createQueryBuilder('incident')
@@ -207,7 +214,6 @@ export class IncidentService {
           informant: trimmedInformant,
         })
         .getMany();
-
 
       return incidents;
     } catch (error) {
@@ -294,29 +300,31 @@ export class IncidentService {
       // --- Auto-assign Tier2 technician if requested ---
       if (incidentDto.automaticallyAssignForTier2) {
         console.log('🔍 Starting Tier2 assignment process...');
-        
+
         // Find CategoryItem by name (category)
         const categoryItem = await this.categoryItemRepository.findOne({
           where: { name: incidentDto.category || incident.category },
           relations: ['subCategory', 'subCategory.mainCategory'],
         });
-        
+
         if (!categoryItem) {
           throw new BadRequestException(
             `Category '${incidentDto.category || incident.category}' not found`,
           );
         }
-        
+
         const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
         const teamName = categoryItem.subCategory?.mainCategory?.name;
-        
-        console.log(`📋 Category: ${incidentDto.category || incident.category}`);
+
+        console.log(
+          `📋 Category: ${incidentDto.category || incident.category}`,
+        );
         console.log(`🏢 Team ID: ${mainCategoryId}, Team Name: ${teamName}`);
-        
+
         let tier2Tech: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
-        
+
         // Search by different combinations of team identifiers
         const teamIdentifiers = [
           mainCategoryId?.toString(), // Convert to string
@@ -324,67 +332,87 @@ export class IncidentService {
           teamName,
           teamName?.toString(),
         ].filter(Boolean); // Remove null/undefined values
-        
-        console.log(`🔍 Searching for Tier2 technicians with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
-        
+
+        console.log(
+          `🔍 Searching for Tier2 technicians with team identifiers: ${JSON.stringify(teamIdentifiers)}`,
+        );
+
         for (const team of teamIdentifiers) {
           for (const level of levelVariants) {
             if (!team) continue;
-            
+
             console.log(`🔍 Searching: team=${team}, level=${level}`);
-            
+
             // Try matching both team and teamId fields
             const foundByTeam = await this.technicianRepository.find({
               where: { team: team, level: level, active: true },
             });
-            
+
             const foundByTeamId = await this.technicianRepository.find({
               where: { teamId: team, level: level, active: true },
             });
-            
-            console.log(`🔍 Found by team field: ${foundByTeam.length}, Found by teamId field: ${foundByTeamId.length}`);
-            
+
+            console.log(
+              `🔍 Found by team field: ${foundByTeam.length}, Found by teamId field: ${foundByTeamId.length}`,
+            );
+
             // Combine results and remove duplicates
             const allFound = [...foundByTeam, ...foundByTeamId];
-            const uniqueFound = allFound.filter((tech, index, self) => 
-              index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+            const uniqueFound = allFound.filter(
+              (tech, index, self) =>
+                index ===
+                self.findIndex((t) => t.serviceNum === tech.serviceNum),
             );
-            
+
             if (uniqueFound.length > 0) {
-              console.log(`✅ Found ${uniqueFound.length} technicians: ${uniqueFound.map(t => t.serviceNum).join(', ')}`);
+              console.log(
+                `✅ Found ${uniqueFound.length} technicians: ${uniqueFound.map((t) => t.serviceNum).join(', ')}`,
+              );
               candidates.push(...uniqueFound);
             }
           }
         }
-        
+
         // Remove duplicates from final candidates array
-        const uniqueCandidates = candidates.filter((tech, index, self) => 
-          index === self.findIndex(t => t.serviceNum === tech.serviceNum)
+        const uniqueCandidates = candidates.filter(
+          (tech, index, self) =>
+            index === self.findIndex((t) => t.serviceNum === tech.serviceNum),
         );
-        
+
         console.log(`🎯 Total unique candidates: ${uniqueCandidates.length}`);
-        
+
         if (uniqueCandidates.length > 0) {
           // Randomly select a technician
-          tier2Tech = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
+          tier2Tech =
+            uniqueCandidates[
+              Math.floor(Math.random() * uniqueCandidates.length)
+            ];
           incidentDto.handler = tier2Tech.serviceNum;
-          console.log(`✅ Assigned to Tier2 technician: ${tier2Tech.serviceNum} (${tier2Tech.name})`);
+          console.log(
+            `✅ Assigned to Tier2 technician: ${tier2Tech.serviceNum} (${tier2Tech.name})`,
+          );
         } else {
           // Let's also check what technicians exist for debugging
           const allTier2Techs = await this.technicianRepository.find({
             where: { level: 'Tier2', active: true },
           });
-          console.log(`🔍 All active Tier2 technicians in database: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team}, teamId: ${t.teamId})`).join(', ')}`);
-          
+          console.log(
+            `🔍 All active Tier2 technicians in database: ${allTier2Techs.map((t) => `${t.serviceNum} (team: ${t.team}, teamId: ${t.teamId})`).join(', ')}`,
+          );
+
           throw new BadRequestException(
-            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
+            `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map((t) => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
           );
         }
       }
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
-      const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
+      const assignedToDisplayName = await this.getDisplayNameByServiceNum(
+        incidentDto.handler || incident.handler,
+      );
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(
+        incidentDto.update_by || incident.update_by,
+      );
 
       // --- IncidentHistory entry ---
       const history = new IncidentHistory();
@@ -437,7 +465,7 @@ export class IncidentService {
     }
   }
 
-async getDashboardStats(params?: {
+  async getDashboardStats(params?: {
     userParentCategory?: string;
     userType?: string;
     technicianId?: string;
@@ -445,131 +473,75 @@ async getDashboardStats(params?: {
   }): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
-      const { userParentCategory, userType, technicianId } = params || {};
-      
-      let filteredIncidents = userParentCategory 
-        ? incidents.filter(inc => inc.category && inc.category.includes(userParentCategory))
+
+      const { userParentCategory, userType } = params || {};
+
+      const filteredIncidents = userParentCategory
+        ? incidents.filter(
+            (inc) => inc.category && inc.category.includes(userParentCategory),
+          )
         : incidents;
 
       const today = new Date().toISOString().split('T')[0];
 
-      // Helper function to check if a date matches today
-      const isToday = (dateString: string) => {
-        if (!dateString) return false;
-        try {
-          const dateOnly = new Date(dateString).toISOString().split('T')[0];
-          return dateOnly === today;
-        } catch (error) {
-          return false;
-        }
-      };
-
-      // For Technician role, we need special filtering
-      if (userType?.toLowerCase() === 'technician' && technicianId) {
-        // Get technician's serviceNum and display name
-        const technician = await this.technicianRepository.findOne({
-          where: { id: parseInt(technicianId) },
-          relations: ['user']
-        });
-        
-        if (!technician) {
-          throw new NotFoundException(`Technician with id ${technicianId} not found`);
-        }
-
-        const technicianServiceNum = technician.serviceNum;
-        const technicianDisplayName = technician.name;
-
-        // For today's counts: filter by handler (serviceNum) and today's date
-        const technicianTodayIncidents = filteredIncidents.filter(inc => 
-          inc.handler === technicianServiceNum && isToday(inc.update_on)
-        );
-
-        // For total counts: get from incident history where assignedTo matches display name
-        const incidentHistory = await this.incidentHistoryRepository.find({
-          where: { assignedTo: technicianDisplayName }
-        });
-
-        // Get unique incident numbers from history
-        const uniqueIncidentNumbers = [...new Set(incidentHistory.map(h => h.incidentNumber))];
-        const technicianTotalIncidents = incidents.filter(inc => 
-          uniqueIncidentNumbers.includes(inc.incident_number)
-        );
-
-        const statusCounts = {
-          'Open': technicianTotalIncidents.filter(inc => inc.status === 'Open').length,
-          'Hold': technicianTotalIncidents.filter(inc => inc.status === 'Hold').length,
-          'In Progress': technicianTotalIncidents.filter(inc => inc.status === 'In Progress').length,
-          'Closed': technicianTotalIncidents.filter(inc => inc.status === 'Closed').length,
-        };
-
-        const priorityCounts = {
-          'Medium': technicianTotalIncidents.filter(inc => inc.priority === 'Medium').length,
-          'High': technicianTotalIncidents.filter(inc => inc.priority === 'High').length,
-          'Critical': technicianTotalIncidents.filter(inc => inc.priority === 'Critical').length,
-          'High (Today)': technicianTodayIncidents.filter(inc => inc.priority === 'High').length,
-        };
-
-        const todayStats = {
-          'Open (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Open').length,
-          'Hold (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Hold').length,
-          'In Progress (Today)': technicianTodayIncidents.filter(inc => inc.status === 'In Progress').length,
-          'Closed (Today)': technicianTodayIncidents.filter(inc => inc.status === 'Closed').length,
-        };
-
-        const overallStatusCounts = {
-          'Open': statusCounts['Open'],
-          'Hold': statusCounts['Hold'],
-          'In Progress': statusCounts['In Progress'],
-          'Closed': statusCounts['Closed'],
-          'Open (Today)': todayStats['Open (Today)'],
-          'Hold (Today)': todayStats['Hold (Today)'],
-          'In Progress (Today)': todayStats['In Progress (Today)'],
-          'Closed (Today)': todayStats['Closed (Today)'],
-        };
-
-        return {
-          statusCounts,
-          priorityCounts,
-          todayStats,
-          overallStatusCounts,
-        };
-      }
-
-      // Default logic for other user types (Super Admin, etc.)
       const statusCounts = {
-        'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
-        'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
-        'In Progress': filteredIncidents.filter(inc => inc.status === 'In Progress').length,
-        'Closed': filteredIncidents.filter(inc => inc.status === 'Closed').length,
+        Open: filteredIncidents.filter((inc) => inc.status === 'Open').length,
+        Hold: filteredIncidents.filter((inc) => inc.status === 'Hold').length,
+        'In Progress': filteredIncidents.filter(
+          (inc) => inc.status === 'In Progress',
+        ).length,
+        Closed: filteredIncidents.filter((inc) => inc.status === 'Closed')
+          .length,
       };
 
       const priorityCounts = {
-        'Medium': filteredIncidents.filter(inc => inc.priority === 'Medium').length,
-        'High': filteredIncidents.filter(inc => inc.priority === 'High').length,
-        'Critical': filteredIncidents.filter(inc => inc.priority === 'Critical').length,
+        Medium: filteredIncidents.filter((inc) => inc.priority === 'Medium')
+          .length,
+        High: filteredIncidents.filter((inc) => inc.priority === 'High').length,
+        Critical: filteredIncidents.filter((inc) => inc.priority === 'Critical')
+          .length,
       };
 
       const todayStats = {
-        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && isToday(inc.update_on)).length,
-        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && isToday(inc.update_on)).length,
-        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && isToday(inc.update_on)).length,
-        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && isToday(inc.update_on)).length,
+        'Open (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'Open' && inc.update_on === today,
+        ).length,
+        'Hold (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'Hold' && inc.update_on === today,
+        ).length,
+        'In Progress (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'In Progress' && inc.update_on === today,
+        ).length,
+        'Closed (Today)': filteredIncidents.filter(
+          (inc) => inc.status === 'Closed' && inc.update_on === today,
+        ).length,
       };
 
       // For Super Admin users, always return overall counts (all incidents)
       // For other users, use filtered incidents based on their permissions
-      const isLimitedUser = userType && !userType.toLowerCase().includes('superadmin');
+      const isLimitedUser =
+        userType && !userType.toLowerCase().includes('superadmin');
       const countsSource = isLimitedUser ? filteredIncidents : incidents;
 
       const overallStatusCounts = {
-        'Open': countsSource.filter(inc => inc.status === 'Open').length,
-        'Hold': countsSource.filter(inc => inc.status === 'Hold').length,
-        'In Progress': countsSource.filter(inc => inc.status === 'In Progress').length,
-        'Closed': countsSource.filter(inc => inc.status === 'Closed').length,
-        'Open (Today)': countsSource.filter(inc => inc.status === 'Open' && isToday(inc.update_on)).length,
-        'Hold (Today)': countsSource.filter(inc => inc.status === 'Hold' && isToday(inc.update_on)).length,
-        'In Progress (Today)': countsSource.filter(inc => inc.status === 'In Progress' && isToday(inc.update_on)).length,
-        'Closed (Today)': countsSource.filter(inc => inc.status === 'Closed' && isToday(inc.update_on)).length,
+        Open: countsSource.filter((inc) => inc.status === 'Open').length,
+        Hold: countsSource.filter((inc) => inc.status === 'Hold').length,
+        'In Progress': countsSource.filter(
+          (inc) => inc.status === 'In Progress',
+        ).length,
+        Closed: countsSource.filter((inc) => inc.status === 'Closed').length,
+        'Open (Today)': countsSource.filter(
+          (inc) => inc.status === 'Open' && inc.update_on === today,
+        ).length,
+        'Hold (Today)': countsSource.filter(
+          (inc) => inc.status === 'Hold' && inc.update_on === today,
+        ).length,
+        'In Progress (Today)': countsSource.filter(
+          (inc) => inc.status === 'In Progress' && inc.update_on === today,
+        ).length,
+        'Closed (Today)': countsSource.filter(
+          (inc) => inc.status === 'Closed' && inc.update_on === today,
+        ).length,
       };
 
       return {
@@ -585,7 +557,6 @@ async getDashboardStats(params?: {
       );
     }
   }
-
 
   async getIncidentHistory(
     incident_number: string,
