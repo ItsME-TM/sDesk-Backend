@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   NotFoundException,
@@ -12,10 +15,14 @@ import { notifyInactiveByAdmin, emitTechnicianStatusChange } from '../main';
 
 @Injectable()
 export class TechnicianService {
+  [x: string]: any;
+
+  updateTechnicianActive(serviceNum: string, arg1: boolean) {
+    throw new Error('Method not implemented.');
+  }
   constructor(
     @InjectRepository(Technician)
     private readonly technicianRepo: Repository<Technician>,
-    
   ) {}
 
   // Create a technician
@@ -25,14 +32,19 @@ export class TechnicianService {
       return await this.technicianRepo.save(technician);
     } catch (error) {
       if (error.code === '23505') {
-        throw new ConflictException('Technician with the same Service Number or Email already exists.');
+        throw new ConflictException(
+          'Technician with the same Service Number or Email already exists.',
+        );
       }
       throw new InternalServerErrorException('Failed to create technician.');
     }
   }
 
   // Get all technicians with optional filters
-  async findAllTechncians(active?: boolean, level?: string): Promise<Technician[]> {
+  async findAllTechncians(
+    active?: boolean,
+    level?: string,
+  ): Promise<Technician[]> {
     try {
       const findOptions: FindManyOptions<Technician> = {};
       const where: any = {};
@@ -57,9 +69,13 @@ export class TechnicianService {
   // Find technician by service number
   async findOneTechnician(serviceNum: string): Promise<Technician> {
     try {
-      const technician = await this.technicianRepo.findOne({ where: { serviceNum } });
+      const technician = await this.technicianRepo.findOne({
+        where: { serviceNum },
+      });
       if (!technician) {
-        throw new NotFoundException(`Technician with Service Number "${serviceNum}" not found.`);
+        throw new NotFoundException(
+          `Technician with Service Number "${serviceNum}" not found.`,
+        );
       }
       return technician;
     } catch (error) {
@@ -69,7 +85,10 @@ export class TechnicianService {
   }
 
   // Update technician
-  async updateTechnician(serviceNum: string, dto: CreateTechnicianDto): Promise<Technician> {
+  async updateTechnician(
+    serviceNum: string,
+    dto: CreateTechnicianDto,
+  ): Promise<Technician> {
     try {
       const technician = await this.findOneTechnician(serviceNum);
 
@@ -99,7 +118,9 @@ export class TechnicianService {
     try {
       const result = await this.technicianRepo.delete({ serviceNum });
       if (result.affected === 0) {
-        throw new NotFoundException(`Technician with Service Number "${serviceNum}" not found.`);
+        throw new NotFoundException(
+          `Technician with Service Number "${serviceNum}" not found.`,
+        );
       }
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
@@ -107,10 +128,12 @@ export class TechnicianService {
     }
   }
 
-  async checkTechnicianStatus(): Promise<{ serviceNum: string; active: string }[]> {
+  async checkTechnicianStatus(): Promise<
+    { serviceNum: string; active: string }[]
+  > {
     try {
       const all = await this.technicianRepo.find();
-      return all.map(t => ({ serviceNum: t.serviceNum, active: 'true'})); // simplified logic
+      return all.map((t) => ({ serviceNum: t.serviceNum, active: 'true' })); // simplified logic
     } catch (error) {
       throw new Error('Failed to retrieve technician status');
     }

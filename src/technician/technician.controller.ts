@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/require-await */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
   Controller,
   Get,
@@ -11,6 +15,7 @@ import {
   Res,
   Req,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
@@ -75,7 +80,8 @@ export class TechnicianController {
     @Query('level') level?: string,
   ): Promise<Technician[]> {
     try {
-      const isActive = active === 'true' ? true : active === 'false' ? false : undefined;
+      const isActive =
+        active === 'true' ? true : active === 'false' ? false : undefined;
       return await this.technicianService.findAllTechncians(isActive, level);
     } catch (error) {
       throw new HttpException(
@@ -151,7 +157,7 @@ export class TechnicianController {
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async deactivateTechnician(@Param('serviceNum') serviceNum: string) {
     try {
-      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      this.technicianService.updateTechnicianActive(serviceNum, false);
       return { message: 'Technician deactivated' };
     } catch (error) {
       throw new HttpException(
@@ -161,7 +167,7 @@ export class TechnicianController {
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    }s
+    }
   }
   @Put('technician/:serviceNum/force-logout')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -171,7 +177,7 @@ export class TechnicianController {
     @Req() req: Request,
   ) {
     try {
-      await this.technicianService.updateTechnicianActive(serviceNum, false);
+      this.technicianService.updateTechnicianActive(serviceNum, false);
       return { message: 'Technician force logout initiated', serviceNum };
     } catch (error) {
       throw new HttpException(

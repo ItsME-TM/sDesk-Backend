@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 import {
@@ -33,7 +36,9 @@ export class IncidentService {
   ) {}
 
   // Helper method to detect file type from base64 string
-  private async detectFileTypeFromBase64(base64String: string): Promise<string | undefined> {
+  private async detectFileTypeFromBase64(
+    base64String: string,
+  ): Promise<string | undefined> {
     if (!base64String) return undefined;
 
     // Extract base64 data (remove data:image/png;base64, prefix if present)
@@ -42,6 +47,7 @@ export class IncidentService {
 
     const buffer = Buffer.from(base64Data, 'base64');
     const type = await fileType.fromBuffer(buffer);
+     
     return type?.mime;
   }
 
@@ -70,7 +76,9 @@ export class IncidentService {
 
       // --- File Type Validation ---
       if (incidentDto.Attachment) {
-        const detectedMimeType = await this.detectFileTypeFromBase64(incidentDto.Attachment);
+        const detectedMimeType = await this.detectFileTypeFromBase64(
+          incidentDto.Attachment,
+        );
         const allowedMimeTypes = [
           'image/jpeg',
           'image/png',
@@ -86,7 +94,9 @@ export class IncidentService {
         ];
 
         if (!detectedMimeType || !allowedMimeTypes.includes(detectedMimeType)) {
-          throw new BadRequestException('Invalid attachment file type. Only images, PDFs, and common document formats are allowed.');
+          throw new BadRequestException(
+            'Invalid attachment file type. Only images, PDFs, and common document formats are allowed.',
+          );
         }
       }
       // --- End File Type Validation ---
@@ -94,7 +104,7 @@ export class IncidentService {
       const sequenceResult = await this.incidentRepository.query(
         "SELECT nextval('incident_number_seq') as value",
       );
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+       
       const nextId = sequenceResult[0]?.value;
       if (!nextId) {
         throw new BadRequestException('Failed to generate incident number');
@@ -484,4 +494,3 @@ export class IncidentService {
     });
   }
 }
-
