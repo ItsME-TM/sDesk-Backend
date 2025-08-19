@@ -13,6 +13,7 @@ import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
+import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
 
 @Injectable()
 export class IncidentService {
@@ -30,6 +31,8 @@ export class IncidentService {
     private categoryItemRepository: Repository<CategoryItem>,
     @InjectRepository(SLTUser)
     private sltUserRepository: Repository<SLTUser>,
+    @InjectRepository(TeamAdmin)
+    private teamAdminRepository: Repository<TeamAdmin>,
   ) {}
 
   // Helper method to get display_name from slt_users table by serviceNum
@@ -380,6 +383,66 @@ export class IncidentService {
             `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
           );
         }
+      }
+
+      // --- Auto-assign Team Admin if requested ---
+      if (incidentDto.assignForTeamAdmin) {
+        console.log('🔍 Starting Team Admin assignment process...');
+        
+        // Find the current technician to get their team information
+        const currentTechnician = await this.technicianRepository.findOne({
+          where: { serviceNum: incident.handler, active: true },
+        });
+
+        if (!currentTechnician) {
+          throw new BadRequestException(
+            `Current technician with serviceNum ${incident.handler} not found or not active`,
+          );
+        }
+
+        console.log(`👤 Current technician: ${currentTechnician.serviceNum} (team: ${currentTechnician.team}, teamId: ${currentTechnician.teamId})`);
+
+        // Find team admin for the technician's team using both team and teamId fields
+        const teamIdentifiers = [
+          currentTechnician.team,
+          currentTechnician.teamId,
+        ].filter(Boolean);
+
+        console.log(`🔍 Searching for team admin with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
+
+        let teamAdmin: TeamAdmin | null = null;
+
+        for (const teamIdentifier of teamIdentifiers) {
+          console.log(`🔍 Searching for team admin with identifier: ${teamIdentifier}`);
+          
+          teamAdmin = await this.teamAdminRepository.findOne({
+            where: [
+              { teamId: teamIdentifier, active: true },
+              { teamName: teamIdentifier, active: true },
+            ],
+          });
+
+          if (teamAdmin) {
+            console.log(`✅ Found team admin: ${teamAdmin.serviceNumber} (${teamAdmin.userName})`);
+            break;
+          }
+        }
+
+        if (!teamAdmin) {
+          // Let's also check what team admins exist for debugging
+          const allTeamAdmins = await this.teamAdminRepository.find({
+            where: { active: true },
+          });
+          console.log(`🔍 All active team admins in database: ${allTeamAdmins.map(ta => `${ta.serviceNumber} (teamId: ${ta.teamId}, teamName: ${ta.teamName})`).join(', ')}`);
+          
+          throw new BadRequestException(
+            `No active team admin found for technician's team (${teamIdentifiers.join(', ')}). Available team admins: ${allTeamAdmins.map(ta => `${ta.serviceNumber} (team: ${ta.teamName})`).join(', ')}`,
+          );
+        }
+
+        // Assign the incident to the team admin
+        incidentDto.handler = teamAdmin.serviceNumber;
+        console.log(`✅ Assigned incident to team admin: ${teamAdmin.serviceNumber} (${teamAdmin.userName})`);
       }
 
       // Get display names for incident history
