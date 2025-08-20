@@ -280,6 +280,8 @@ export class IncidentService {
     incidentDto: IncidentDto,
   ): Promise<Incident> {
     try {
+      console.log(`[IncidentService] update: incident_number=${incident_number}, incidentDto=`, incidentDto);
+
       const incident = await this.incidentRepository.findOne({
         where: { incident_number },
       });
@@ -292,6 +294,91 @@ export class IncidentService {
         throw new BadRequestException(
           'At least one field is required to update',
         );
+      }
+
+      // --- Get Original Incident to check for category change ---
+      const originalIncident = await this.incidentRepository.findOne({
+        where: { incident_number },
+      });
+
+      if (!originalIncident) {
+        throw new NotFoundException(`Incident with incident_number ${incident_number} not found`);
+      }
+
+      const categoryChanged = incidentDto.category && incidentDto.category !== originalIncident.category;
+
+      if (categoryChanged) {
+        console.log(`[IncidentService] Category changed from ${originalIncident.category} to ${incidentDto.category}. Reassigning incident.`);
+
+        // Find CategoryItem by name (incidentDto.category is the category name)
+        const categoryItem = await this.categoryItemRepository.findOne({
+          where: { name: incidentDto.category },
+          relations: ['subCategory', 'subCategory.mainCategory'],
+        });
+
+        if (!categoryItem) {
+          console.error(`[IncidentService] New category '${incidentDto.category}' not found for reassignment.`);
+          throw new BadRequestException(
+            `New category '${incidentDto.category}' not found for reassignment.`,
+          );
+        }
+
+        const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
+        const teamName = categoryItem.subCategory?.mainCategory?.name;
+
+        if (!mainCategoryId && !teamName) {
+          console.error(`[IncidentService] No team found for new category '${incidentDto.category}' for reassignment.`);
+          throw new BadRequestException(
+            `No team found for new category '${incidentDto.category}' for reassignment.`,
+          );
+        }
+
+        let assignedTechnician: Technician | null = null;
+        const levelVariants = ['Tier1', 'tier1'];
+        const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
+
+        console.log(`[IncidentService] Searching for Tier1 technicians in teams: ${teamIdentifiers.join(', ')}`);
+
+        for (const team of teamIdentifiers) {
+          for (const level of levelVariants) {
+            const availableTechnicians = await this.technicianRepository.find({
+              where: {
+                team: team,
+                level: level,
+                active: true,
+              },
+              order: {
+                id: 'ASC',
+              },
+            });
+
+            if (availableTechnicians.length > 0) {
+              const teamKey = `${team}_${level}`;
+              const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+              assignedTechnician = availableTechnicians[currentIndex];
+              const nextIndex = (currentIndex + 1) % availableTechnicians.length;
+              this.teamAssignmentIndex.set(teamKey, nextIndex);
+              console.log(`[IncidentService] Found and assigned Tier1 technician: ${assignedTechnician.serviceNum} from team ${team}`);
+              break;
+            }
+          }
+          if (assignedTechnician) break;
+        }
+
+        if (!assignedTechnician) {
+          console.error(`[IncidentService] No active Tier1 technician found for team associated with new category '${incidentDto.category}'.`);
+          throw new BadRequestException(
+            `No active Tier1 technician found for team associated with new category '${incidentDto.category}'.`,
+          );
+        }
+
+        // Assign the incident to the newly found Tier1 technician
+        incidentDto.handler = assignedTechnician.serviceNum;
+        console.log(`[IncidentService] Incident ${incident_number} reassigned to Tier1 technician: ${assignedTechnician.serviceNum}`);
+
+        // Clear other assignment flags if category changed and new assignment made
+        incidentDto.automaticallyAssignForTier2 = false;
+        incidentDto.assignForTeamAdmin = false;
       }
 
       // --- Auto-assign Tier2 technician if requested ---
@@ -465,6 +552,7 @@ export class IncidentService {
       Object.assign(incident, incidentDto);
       return await this.incidentRepository.save(incident);
     } catch (error) {
+      console.error(`[IncidentService] Error updating incident ${incident_number}:`, error);
       if (
         error instanceof NotFoundException ||
         error instanceof BadRequestException
