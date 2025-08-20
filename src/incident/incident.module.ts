@@ -8,9 +8,10 @@ import { Technician } from '../technician/entities/technician.entity';
 import { TechnicianModule } from '../technician/technician.module';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
+import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Incident, Technician, IncidentHistory, CategoryItem, SLTUser]), TechnicianModule],
+  imports: [TypeOrmModule.forFeature([Incident, Technician, IncidentHistory, CategoryItem, SLTUser, TeamAdmin]), TechnicianModule],
   controllers: [IncidentController],
   providers: [IncidentService],
 })

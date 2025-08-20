@@ -15,6 +15,7 @@ import { Technician } from '../technician/entities/technician.entity';
 import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
+import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
 
 @Injectable()
 export class IncidentService {
@@ -32,6 +33,8 @@ export class IncidentService {
     private categoryItemRepository: Repository<CategoryItem>,
     @InjectRepository(SLTUser)
     private sltUserRepository: Repository<SLTUser>,
+    @InjectRepository(TeamAdmin)
+    private teamAdminRepository: Repository<TeamAdmin>,
   ) {}
 
   // Helper method to get display_name from slt_users table by serviceNum
@@ -470,17 +473,54 @@ export class IncidentService {
     userType?: string;
     technicianId?: string;
     teamName?: string;
+    adminServiceNum?: string;
   }): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
 
-      const { userParentCategory, userType } = params || {};
+      const { userParentCategory, userType, adminServiceNum } = params || {};
 
-      const filteredIncidents = userParentCategory
-        ? incidents.filter(
-            (inc) => inc.category && inc.category.includes(userParentCategory),
-          )
-        : incidents;
+      let filteredIncidents = incidents;
+
+      // Handle admin filtering based on main category and subcategories
+      if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
+        // Get admin's assigned categories
+        const teamAdmin = await this.teamAdminRepository.findOne({
+          where: { serviceNumber: adminServiceNum },
+        });
+
+        if (teamAdmin) {
+          // Get all category items that belong to admin's main category (teamName) or subcategories (cat1-cat4)
+          const adminCategories = [teamAdmin.teamName, teamAdmin.cat1, teamAdmin.cat2, teamAdmin.cat3, teamAdmin.cat4]
+            .filter(cat => cat && cat.trim() !== '');
+
+          // Get all category items that fall under these categories
+          const categoryItems = await this.categoryItemRepository
+            .createQueryBuilder('categoryItem')
+            .leftJoinAndSelect('categoryItem.subCategory', 'subCategory')
+            .leftJoinAndSelect('subCategory.mainCategory', 'mainCategory')
+            .where(
+              'mainCategory.name IN (:...mainCategories) OR subCategory.name IN (:...subCategories)',
+              {
+                mainCategories: adminCategories,
+                subCategories: adminCategories,
+              }
+            )
+            .getMany();
+
+          const categoryItemCodes = categoryItems.map(item => item.category_code);
+
+          // Filter incidents by category items
+          filteredIncidents = incidents.filter(incident => 
+            incident.category && categoryItemCodes.includes(incident.category)
+          );
+        }
+      } else if (userParentCategory) {
+        // Original filtering logic for other user types
+        filteredIncidents = incidents.filter(
+          (inc) => inc.category && inc.category.includes(userParentCategory),
+        );
+      }
 
       const today = new Date().toISOString().split('T')[0];
 
