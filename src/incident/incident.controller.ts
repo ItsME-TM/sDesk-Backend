@@ -219,7 +219,6 @@ export class IncidentController {
 
   @Get('dashboard-stats')
   async getDashboardStats(
-    @Query('userParentCategory') userParentCategory?: string,
     @Query('userType') userType?: string,
     @Query('technicianId') technicianId?: string,
     @Query('teamName') teamName?: string,
@@ -227,7 +226,6 @@ export class IncidentController {
   ): Promise<any> {
     try {
       return await this.incidentService.getDashboardStats({
-        userParentCategory,
         userType,
         technicianId,
         teamName,
