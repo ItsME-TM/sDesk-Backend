@@ -5,7 +5,7 @@ import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { verify } from 'jsonwebtoken';
 import { TeamAdminService } from '../teamadmin/teamadmin.service';
 import { TechnicianService } from '../technician/technician.service';
-import { emitTechnicianStatusChange } from '../main'; 
+import { emitTechnicianStatusChange } from '../main';
 import { User } from './interface/auth.interface';
 import { UserPayload } from './interface/user-payload.interface';
 
@@ -15,7 +15,6 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly teamAdminService: TeamAdminService,
     private readonly technicianService: TechnicianService,
-    
   ) {}
 
   @Post('login')
@@ -42,13 +41,10 @@ export class AuthController {
           user.serviceNum,
           true,
         );
-        
 
-      // Emit WebSocket event so all admins update instantly
-      emitTechnicianStatusChange(user.serviceNum, true);
-    
-    }
-
+        // Emit WebSocket event so all admins update instantly
+        emitTechnicianStatusChange(user.serviceNum, true);
+      }
 
       // Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
@@ -81,7 +77,7 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.refreshToken;
       const token = req.cookies?.jwt;
-    
+
       if (token) {
         try {
           const payload = verify(
@@ -94,17 +90,18 @@ export class AuthController {
               false,
             );
             if (payload.role === 'technician' && payload.serviceNum) {
-  await this.technicianService.updateTechnicianActive(payload.serviceNum, false);
-  emitTechnicianStatusChange(payload.serviceNum, false);
-}
-           
+              await this.technicianService.updateTechnicianActive(
+                payload.serviceNum,
+                false,
+              );
+              emitTechnicianStatusChange(payload.serviceNum, false);
+            }
           }
         } catch (e) {
           return {
             success: false,
             message: `Technician status update error: ${e instanceof Error ? e.message : e}`,
           };
-          
         }
       }
 
@@ -126,7 +123,6 @@ export class AuthController {
           sameSite: 'none',
           path: '/auth/refresh-token',
         });
-        
       } catch (e) {
         return {
           success: false,
