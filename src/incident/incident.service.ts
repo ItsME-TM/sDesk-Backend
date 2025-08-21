@@ -478,21 +478,33 @@ export class IncidentService {
     try {
       const incidents = await this.incidentRepository.find();
 
-      const { userParentCategory, userType, adminServiceNum } = params || {};
+      const { userParentCategory, userType, technicianId, adminServiceNum } = params || {};
 
       let filteredIncidents = incidents;
 
+      // Handle technician filtering - show only incidents assigned to this technician
+      if (userType?.toLowerCase() === 'technician' && technicianId) {
+        filteredIncidents = incidents.filter(incident => 
+          incident.handler === technicianId
+        );
+      }
       // Handle admin filtering based on main category and subcategories
-      if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
+      else if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
+        console.log(`[getDashboardStats] Admin filtering for serviceNumber: ${adminServiceNum}`);
+        
         // Get admin's assigned categories
         const teamAdmin = await this.teamAdminRepository.findOne({
           where: { serviceNumber: adminServiceNum },
         });
 
+        console.log(`[getDashboardStats] Found teamAdmin:`, teamAdmin);
+
         if (teamAdmin) {
           // Get all category items that belong to admin's main category (teamName) or subcategories (cat1-cat4)
           const adminCategories = [teamAdmin.teamName, teamAdmin.cat1, teamAdmin.cat2, teamAdmin.cat3, teamAdmin.cat4]
             .filter(cat => cat && cat.trim() !== '');
+
+          console.log(`[getDashboardStats] Admin categories:`, adminCategories);
 
           // Get all category items that fall under these categories
           const categoryItems = await this.categoryItemRepository
@@ -508,15 +520,28 @@ export class IncidentService {
             )
             .getMany();
 
-          const categoryItemCodes = categoryItems.map(item => item.category_code);
+          console.log(`[getDashboardStats] Found category items:`, categoryItems.length);
 
-          // Filter incidents by category items
+          // Get both category codes and names for filtering
+          const categoryItemCodes = categoryItems.map(item => item.category_code);
+          const categoryItemNames = categoryItems.map(item => item.name);
+
+          console.log(`[getDashboardStats] Category codes:`, categoryItemCodes);
+          console.log(`[getDashboardStats] Category names:`, categoryItemNames);
+
+          // Filter incidents by category items (check both code and name fields)
           filteredIncidents = incidents.filter(incident => 
-            incident.category && categoryItemCodes.includes(incident.category)
+            incident.category && (
+              categoryItemCodes.includes(incident.category) ||
+              categoryItemNames.includes(incident.category)
+            )
           );
+
+          console.log(`[getDashboardStats] Filtered incidents count: ${filteredIncidents.length} out of ${incidents.length}`);
         }
-      } else if (userParentCategory) {
-        // Original filtering logic for other user types
+      } 
+      // Original filtering logic for other user types
+      else if (userParentCategory) {
         filteredIncidents = incidents.filter(
           (inc) => inc.category && inc.category.includes(userParentCategory),
         );
