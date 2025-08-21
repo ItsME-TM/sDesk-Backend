@@ -469,7 +469,6 @@ export class IncidentService {
   }
 
   async getDashboardStats(params?: {
-    userParentCategory?: string;
     userType?: string;
     technicianId?: string;
     teamName?: string;
@@ -478,7 +477,7 @@ export class IncidentService {
     try {
       const incidents = await this.incidentRepository.find();
 
-      const { userParentCategory, userType, technicianId, adminServiceNum } = params || {};
+      const { userType, technicianId, adminServiceNum } = params || {};
 
       let filteredIncidents = incidents;
 
@@ -539,12 +538,6 @@ export class IncidentService {
 
           console.log(`[getDashboardStats] Filtered incidents count: ${filteredIncidents.length} out of ${incidents.length}`);
         }
-      } 
-      // Original filtering logic for other user types
-      else if (userParentCategory) {
-        filteredIncidents = incidents.filter(
-          (inc) => inc.category && inc.category.includes(userParentCategory),
-        );
       }
 
       const today = new Date().toISOString().split('T')[0];
