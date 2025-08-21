@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { IncidentService } from './incident.service';
 import { IncidentController } from './incident.controller';
 import { Incident } from './entities/incident.entity';
@@ -11,7 +12,18 @@ import { SLTUser } from '../sltusers/entities/sltuser.entity';
 import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Incident, Technician, IncidentHistory, CategoryItem, SLTUser, TeamAdmin]), TechnicianModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    TypeOrmModule.forFeature([
+      Incident,
+      Technician,
+      IncidentHistory,
+      CategoryItem,
+      SLTUser,
+      TeamAdmin,
+    ]),
+    TechnicianModule,
+  ],
   controllers: [IncidentController],
   providers: [IncidentService],
 })

@@ -3,10 +3,12 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Incident } from './entities/incident.entity';
+import { Repository, In } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { Incident, IncidentStatus } from './entities/incident.entity';
 import { IncidentDto } from './dto/incident.dto';
 import { INCIDENT_REQUIRED_FIELDS } from './incident.interface';
 import { Technician } from '../technician/entities/technician.entity';
@@ -17,6 +19,7 @@ import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
 
 @Injectable()
 export class IncidentService {
+  private readonly logger = new Logger(IncidentService.name);
   // Round-robin assignment tracking for each team
   private teamAssignmentIndex: Map<string, number> = new Map();
 
@@ -127,26 +130,38 @@ export class IncidentService {
         if (assignedTechnician) break;
       }
 
-      // Step 5: Assign the selected technician
-      if (!assignedTechnician) {
-        throw new BadRequestException(
-          `No active tier1 technician found for team '${mainCategoryId}' (category: ${incidentDto.category})`,
+      // Step 5: Check for a technician and create the incident
+      let incident: Incident;
+      if (assignedTechnician) {
+        // If a technician is found, assign them
+        incident = this.incidentRepository.create({
+          ...incidentDto,
+          incident_number: incidentNumber,
+          handler: assignedTechnician.serviceNum,
+          status: IncidentStatus.OPEN, // Explicitly set status to OPEN
+        });
+      } else {
+        // If no technician is found, create the incident as PENDING_ASSIGNMENT
+        console.log(
+          `No active tier1 technician found for team '${mainCategoryId}' (category: ${incidentDto.category}). Incident will be pending assignment.`,
         );
+        incident = this.incidentRepository.create({
+          ...incidentDto,
+          incident_number: incidentNumber,
+          handler: null, // No handler assigned
+          status: IncidentStatus.PENDING_ASSIGNMENT, // Set status to PENDING
+        });
       }
-
-      // Technician assignment complete
-
-      const incident = this.incidentRepository.create({
-        ...incidentDto,
-        incident_number: incidentNumber,
-        handler: assignedTechnician.serviceNum,
-      });
 
       const savedIncident = await this.incidentRepository.save(incident);
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(savedIncident.handler);
-      const updatedByDisplayName = await this.getDisplayNameByServiceNum(savedIncident.informant);
+      const assignedToDisplayName = savedIncident.handler
+        ? await this.getDisplayNameByServiceNum(savedIncident.handler)
+        : 'Pending Assignment';
+      const updatedByDisplayName = await this.getDisplayNameByServiceNum(
+        savedIncident.informant,
+      );
 
       // Create initial incident history entry
       const initialHistory = new IncidentHistory();
@@ -475,10 +490,17 @@ export class IncidentService {
       // --- Auto-assign Team Admin if requested ---
       if (incidentDto.assignForTeamAdmin) {
         console.log('🔍 Starting Team Admin assignment process...');
-        
+
+        const currentHandler = incident.handler;
+        if (!currentHandler) {
+          throw new BadRequestException(
+            'Cannot assign to a team admin because the incident has no current handler.',
+          );
+        }
+
         // Find the current technician to get their team information
         const currentTechnician = await this.technicianRepository.findOne({
-          where: { serviceNum: incident.handler, active: true },
+          where: { serviceNum: currentHandler, active: true },
         });
 
         if (!currentTechnician) {
@@ -533,7 +555,10 @@ export class IncidentService {
       }
 
       // Get display names for incident history
-      const assignedToDisplayName = await this.getDisplayNameByServiceNum(incidentDto.handler || incident.handler);
+      const handlerIdentifier = incidentDto.handler || incident.handler;
+      const assignedToDisplayName = handlerIdentifier
+        ? await this.getDisplayNameByServiceNum(handlerIdentifier)
+        : 'N/A';
       const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
 
       // --- IncidentHistory entry ---
@@ -648,5 +673,107 @@ async getDashboardStats(userParentCategory?: string): Promise<any> {
       where: { incidentNumber: incident_number },
       order: { updatedOn: 'ASC' },
     });
+  }
+
+  // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
+
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async handlePendingAssignments(): Promise<number> {
+    this.logger.log('Running scheduled task to assign pending incidents...');
+
+    const pendingIncidents = await this.incidentRepository.find({
+      where: { status: IncidentStatus.PENDING_ASSIGNMENT },
+    });
+
+    if (pendingIncidents.length === 0) {
+      this.logger.log('No pending incidents to assign.');
+      return 0;
+    }
+
+    this.logger.log(`Found ${pendingIncidents.length} pending incidents.`);
+    let assignmentsCount = 0;
+
+    for (const incident of pendingIncidents) {
+      try {
+        const assigned = await this.assignPendingIncident(incident);
+        if (assigned) {
+          assignmentsCount++;
+        }
+      } catch (error) {
+        this.logger.error(
+          `Failed to process incident ${incident.incident_number}: ${error.message}`,
+          error.stack,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Completed assignment task. Assigned ${assignmentsCount} incidents.`,
+    );
+    return assignmentsCount;
+  }
+
+  private async assignPendingIncident(incident: Incident): Promise<boolean> {
+    const categoryItem = await this.categoryItemRepository.findOne({
+      where: { name: incident.category },
+      relations: ['subCategory', 'subCategory.mainCategory'],
+    });
+
+    if (!categoryItem?.subCategory?.mainCategory) {
+      this.logger.warn(
+        `Could not find team for category '${incident.category}' on incident ${incident.incident_number}. Skipping.`,
+      );
+      return false;
+    }
+
+    const teamId = categoryItem.subCategory.mainCategory.id;
+    const teamName = categoryItem.subCategory.mainCategory.name;
+
+    const availableTechnicians = await this.technicianRepository.find({
+      where: {
+        team: In([teamId, teamName]),
+        level: In(['Tier1', 'tier1']),
+        active: true,
+      },
+      order: { id: 'ASC' },
+    });
+
+    if (availableTechnicians.length === 0) {
+      this.logger.log(
+        `No active Tier1 technicians found for team '${teamName}' (ID: ${teamId}) for incident ${incident.incident_number}.`,
+      );
+      return false;
+    }
+
+    const teamKey = `${teamId}_Tier1`;
+    const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+    const assignedTechnician = availableTechnicians[currentIndex];
+    const nextIndex = (currentIndex + 1) % availableTechnicians.length;
+    this.teamAssignmentIndex.set(teamKey, nextIndex);
+
+    incident.handler = assignedTechnician.serviceNum;
+    incident.status = IncidentStatus.OPEN;
+    await this.incidentRepository.save(incident);
+
+    const assignedToDisplayName = await this.getDisplayNameByServiceNum(
+      incident.handler,
+    );
+    const updatedByDisplayName = 'System';
+
+    const history = new IncidentHistory();
+    history.incidentNumber = incident.incident_number;
+    history.status = incident.status;
+    history.assignedTo = assignedToDisplayName;
+    history.updatedBy = updatedByDisplayName;
+    history.comments = 'Incident automatically assigned by the system.';
+    history.category = incident.category;
+    history.location = incident.location;
+    await this.incidentHistoryRepository.save(history);
+
+    this.logger.log(
+      `Successfully assigned incident ${incident.incident_number} to technician ${assignedTechnician.serviceNum}.`,
+    );
+
+    return true;
   }
 }
