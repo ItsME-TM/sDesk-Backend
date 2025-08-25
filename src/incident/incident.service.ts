@@ -142,9 +142,7 @@ export class IncidentService {
         });
       } else {
         // If no technician is found, create the incident as PENDING_ASSIGNMENT
-        console.log(
-          `No active tier1 technician found for team '${mainCategoryId}' (category: ${incidentDto.category}). Incident will be pending assignment.`,
-        );
+       
         incident = this.incidentRepository.create({
           ...incidentDto,
           incident_number: incidentNumber,
@@ -295,7 +293,7 @@ export class IncidentService {
     incidentDto: IncidentDto,
   ): Promise<Incident> {
     try {
-      console.log(`[IncidentService] update: incident_number=${incident_number}, incidentDto=`, incidentDto);
+     
 
       const incident = await this.incidentRepository.findOne({
         where: { incident_number },
@@ -323,8 +321,7 @@ export class IncidentService {
       const categoryChanged = incidentDto.category && incidentDto.category !== originalIncident.category;
 
       if (categoryChanged) {
-        console.log(`[IncidentService] Category changed from ${originalIncident.category} to ${incidentDto.category}. Reassigning incident.`);
-
+       
         // Find CategoryItem by name (incidentDto.category is the category name)
         const categoryItem = await this.categoryItemRepository.findOne({
           where: { name: incidentDto.category },
@@ -415,8 +412,7 @@ export class IncidentService {
         const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
         const teamName = categoryItem.subCategory?.mainCategory?.name;
         
-        console.log(`📋 Category: ${incidentDto.category || incident.category}`);
-        console.log(`🏢 Team ID: ${mainCategoryId}, Team Name: ${teamName}`);
+    
         
         let tier2Tech: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
@@ -430,13 +426,13 @@ export class IncidentService {
           teamName?.toString(),
         ].filter(Boolean); // Remove null/undefined values
         
-        console.log(`🔍 Searching for Tier2 technicians with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
+       
         
         for (const team of teamIdentifiers) {
           for (const level of levelVariants) {
             if (!team) continue;
             
-            console.log(`🔍 Searching: team=${team}, level=${level}`);
+           
             
             // Try matching both team and teamId fields
             const foundByTeam = await this.technicianRepository.find({
@@ -447,7 +443,7 @@ export class IncidentService {
               where: { teamId: team, level: level, active: true },
             });
             
-            console.log(`🔍 Found by team field: ${foundByTeam.length}, Found by teamId field: ${foundByTeamId.length}`);
+           
             
             // Combine results and remove duplicates
             const allFound = [...foundByTeam, ...foundByTeamId];
@@ -456,7 +452,7 @@ export class IncidentService {
             );
             
             if (uniqueFound.length > 0) {
-              console.log(`✅ Found ${uniqueFound.length} technicians: ${uniqueFound.map(t => t.serviceNum).join(', ')}`);
+              
               candidates.push(...uniqueFound);
             }
           }
@@ -467,19 +463,19 @@ export class IncidentService {
           index === self.findIndex(t => t.serviceNum === tech.serviceNum)
         );
         
-        console.log(`🎯 Total unique candidates: ${uniqueCandidates.length}`);
+    
         
         if (uniqueCandidates.length > 0) {
           // Randomly select a technician
           tier2Tech = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
           incidentDto.handler = tier2Tech.serviceNum;
-          console.log(`✅ Assigned to Tier2 technician: ${tier2Tech.serviceNum} (${tier2Tech.name})`);
+          
         } else {
           // Let's also check what technicians exist for debugging
           const allTier2Techs = await this.technicianRepository.find({
             where: { level: 'Tier2', active: true },
           });
-          console.log(`🔍 All active Tier2 technicians in database: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team}, teamId: ${t.teamId})`).join(', ')}`);
+         
           
           throw new BadRequestException(
             `No active Tier2 technician found for team '${mainCategoryId || teamName}' (category: ${incidentDto.category || incident.category}). Available Tier2 technicians: ${allTier2Techs.map(t => `${t.serviceNum} (team: ${t.team})`).join(', ')}`,
@@ -489,7 +485,7 @@ export class IncidentService {
 
       // --- Auto-assign Team Admin if requested ---
       if (incidentDto.assignForTeamAdmin) {
-        console.log('🔍 Starting Team Admin assignment process...');
+        
 
         const currentHandler = incident.handler;
         if (!currentHandler) {
@@ -509,7 +505,7 @@ export class IncidentService {
           );
         }
 
-        console.log(`👤 Current technician: ${currentTechnician.serviceNum} (team: ${currentTechnician.team}, teamId: ${currentTechnician.teamId})`);
+        
 
         // Find team admin for the technician's team using both team and teamId fields
         const teamIdentifiers = [
@@ -517,12 +513,12 @@ export class IncidentService {
           currentTechnician.teamId,
         ].filter(Boolean);
 
-        console.log(`🔍 Searching for team admin with team identifiers: ${JSON.stringify(teamIdentifiers)}`);
+      
 
         let teamAdmin: TeamAdmin | null = null;
 
         for (const teamIdentifier of teamIdentifiers) {
-          console.log(`🔍 Searching for team admin with identifier: ${teamIdentifier}`);
+         
           
           teamAdmin = await this.teamAdminRepository.findOne({
             where: [
@@ -532,7 +528,7 @@ export class IncidentService {
           });
 
           if (teamAdmin) {
-            console.log(`✅ Found team admin: ${teamAdmin.serviceNumber} (${teamAdmin.userName})`);
+       
             break;
           }
         }
@@ -542,7 +538,7 @@ export class IncidentService {
           const allTeamAdmins = await this.teamAdminRepository.find({
             where: { active: true },
           });
-          console.log(`🔍 All active team admins in database: ${allTeamAdmins.map(ta => `${ta.serviceNumber} (teamId: ${ta.teamId}, teamName: ${ta.teamName})`).join(', ')}`);
+        
           
           throw new BadRequestException(
             `No active team admin found for technician's team (${teamIdentifiers.join(', ')}). Available team admins: ${allTeamAdmins.map(ta => `${ta.serviceNumber} (team: ${ta.teamName})`).join(', ')}`,
@@ -551,7 +547,7 @@ export class IncidentService {
 
         // Assign the incident to the team admin
         incidentDto.handler = teamAdmin.serviceNumber;
-        console.log(`✅ Assigned incident to team admin: ${teamAdmin.serviceNumber} (${teamAdmin.userName})`);
+ 
       }
 
       // Get display names for incident history
@@ -634,21 +630,21 @@ export class IncidentService {
       }
       // Handle admin filtering based on main category and subcategories
       else if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
-        console.log(`[getDashboardStats] Admin filtering for serviceNumber: ${adminServiceNum}`);
+       
         
         // Get admin's assigned categories
         const teamAdmin = await this.teamAdminRepository.findOne({
           where: { serviceNumber: adminServiceNum },
         });
 
-        console.log(`[getDashboardStats] Found teamAdmin:`, teamAdmin);
+       
 
         if (teamAdmin) {
           // Get all category items that belong to admin's main category (teamName) or subcategories (cat1-cat4)
           const adminCategories = [teamAdmin.teamName, teamAdmin.cat1, teamAdmin.cat2, teamAdmin.cat3, teamAdmin.cat4]
             .filter(cat => cat && cat.trim() !== '');
 
-          console.log(`[getDashboardStats] Admin categories:`, adminCategories);
+          
 
           // Get all category items that fall under these categories
           const categoryItems = await this.categoryItemRepository
@@ -664,14 +660,12 @@ export class IncidentService {
             )
             .getMany();
 
-          console.log(`[getDashboardStats] Found category items:`, categoryItems.length);
-
+        
           // Get both category codes and names for filtering
           const categoryItemCodes = categoryItems.map(item => item.category_code);
           const categoryItemNames = categoryItems.map(item => item.name);
 
-          console.log(`[getDashboardStats] Category codes:`, categoryItemCodes);
-          console.log(`[getDashboardStats] Category names:`, categoryItemNames);
+         
 
           // Filter incidents by category items (check both code and name fields)
           filteredIncidents = incidents.filter(incident => 
@@ -681,7 +675,7 @@ export class IncidentService {
             )
           );
 
-          console.log(`[getDashboardStats] Filtered incidents count: ${filteredIncidents.length} out of ${incidents.length}`);
+         
         }
       }
 
