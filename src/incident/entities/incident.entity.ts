@@ -6,6 +6,7 @@ export enum IncidentStatus {
   IN_PROGRESS = 'In Progress',
   HOLD = 'Hold',
   CLOSED = 'Closed',
+  PENDING_ASSIGNMENT = 'Pending Assignment',
 }
 
 export enum IncidentPriority {
@@ -26,8 +27,8 @@ export class Incident {
   @Column()
   location!: string;
 
-  @Column()
-  handler!: string;
+  @Column({ type: 'varchar', nullable: true })
+  handler!: string | null;
 
   @Column()
   update_by!: string;
