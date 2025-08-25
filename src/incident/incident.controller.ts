@@ -226,13 +226,7 @@ export class IncidentController {
     @Query('adminServiceNum') adminServiceNum?: string,
   ): Promise<any> {
     try {
-      return await this.incidentService.getDashboardStats({
-        userParentCategory,
-        userType,
-        technicianId,
-        teamName,
-        adminServiceNum,
-      });
+      return await this.incidentService.getDashboardStats(userParentCategory);
     } catch (error) {
       throw error;
     }
