@@ -336,7 +336,7 @@ export class IncidentController {
       if (io) {
         const eventData = { incident: updatedIncident };
         // Emit real-time update
-        io.emit('incidentUpdated', eventData);
+        io.emit('incident_updated', eventData);
       }
 
       return updatedIncident;
