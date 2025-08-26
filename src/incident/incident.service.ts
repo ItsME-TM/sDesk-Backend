@@ -86,14 +86,14 @@ export class IncidentService {
 
       // Step 4: Try to find technician by all possible combinations (deep robust search)
       let assignedTechnician: Technician | null = null;
-      const levelVariants = ['Tier1', 'tier1'];
+      const tierVariants = ['Tier1', 'tier1'];
       for (const team of [mainCategoryId, teamName]) {
-        for (const level of levelVariants) {
+        for (const tier of tierVariants) {
           if (!team) continue;
           assignedTechnician = await this.technicianRepository.findOne({
             where: {
               team: team,
-              level: level,
+            tier: tier,
               active: true,
             },
           });
@@ -286,10 +286,10 @@ export class IncidentService {
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
         for (const team of [mainCategoryId, teamName]) {
-          for (const level of levelVariants) {
+          for (const tier of levelVariants) {
             if (!team) continue;
             const found = await this.technicianRepository.find({
-              where: { team: team, level: level, active: true },
+              where: { team: team, tier: tier, active: true },
             });
             if (found && found.length > 0) {
               candidates.push(...found);
