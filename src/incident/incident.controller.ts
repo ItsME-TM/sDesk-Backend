@@ -1,3 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-empty */
+/* eslint-disable @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable no-useless-catch */
 import {
   Controller,
   Post,
@@ -7,7 +13,19 @@ import {
   Param,
   UseGuards,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import * as fs from 'fs';
+import { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../middlewares/jwt-auth.guard';
 import { RolesGuard } from '../middlewares/roles.guard';
 import { Roles } from '../middlewares/roles.decorator';
@@ -29,6 +47,112 @@ export class IncidentController {
     try {
       const incident = await this.incidentService.create(incidentDto);
 
+      if (io) {
+        const eventData = { incident };
+
+        // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_created', eventData);
+
+        // 2. Send to specific assigned technician (with popup notification)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      }
+
+      return incident;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Post method with attachment
+  @Post('create-incident-with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage:
+        process.env.NODE_ENV === 'production'
+          ? memoryStorage() // Use memory storage for Heroku
+          : diskStorage({
+              destination: (req, file, cb) => {
+                const uploadsPath = join(
+                  process.cwd(),
+                  'uploads',
+                  'incident_attachments',
+                );
+                try {
+                  if (!fs.existsSync(uploadsPath)) {
+                    fs.mkdirSync(uploadsPath, { recursive: true });
+                  }
+                  cb(null, uploadsPath);
+                } catch (error) {
+                  console.error('Upload directory creation failed:', error);
+                  cb(error, uploadsPath);
+                }
+              },
+              filename: (req, file, cb) => {
+                const uniqueSuffix =
+                  Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const filename = `${uniqueSuffix}-${file.originalname}`;
+                cb(null, filename);
+              },
+            }),
+      limits: {
+        fileSize: 1024 * 1024, // 1MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'application/pdf',
+          'image/png',
+          'image/jpg',
+          'image/jpeg',
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new Error(
+              'Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.',
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  async createIncidentWithAttachment(
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // Add attachment info to the DTO if file is uploaded
+      if (file) {
+        if (process.env.NODE_ENV === 'production') {
+          // For production (memory storage)
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer;
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
+      }
+
+      const incident = await this.incidentService.create(incidentDto);
 
       if (io) {
         const eventData = { incident };
@@ -46,8 +170,8 @@ export class IncidentController {
             },
           );
         }
-
       } else {
+        /* empty */
       }
 
       return incident;
@@ -61,7 +185,6 @@ export class IncidentController {
   async getAssignedToMe(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Incident[]> {
-    // eslint-disable-next-line no-useless-catch
     try {
       return await this.incidentService.getAssignedToMe(serviceNum);
     } catch (error) {
@@ -74,11 +197,8 @@ export class IncidentController {
   async getAssignedByMe(
     @Param('serviceNum') serviceNum: string,
   ): Promise<Incident[]> {
-
-    // eslint-disable-next-line no-useless-catch
     try {
       const result = await this.incidentService.getAssignedByMe(serviceNum);
-
 
       return result;
     } catch (error) {
@@ -90,7 +210,6 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getAll(): Promise<Incident[]> {
-    // eslint-disable-next-line no-useless-catch
     try {
       return await this.incidentService.getAll();
     } catch (error) {
@@ -100,10 +219,18 @@ export class IncidentController {
 
   @Get('dashboard-stats')
   async getDashboardStats(
-    @Query('userParentCategory') userParentCategory?: string,
+    @Query('userType') userType?: string,
+    @Query('technicianId') technicianId?: string,
+    @Query('teamName') teamName?: string,
+    @Query('adminServiceNum') adminServiceNum?: string,
   ): Promise<any> {
     try {
-      return await this.incidentService.getDashboardStats(userParentCategory);
+      return await this.incidentService.getDashboardStats({
+        userType,
+        technicianId,
+        teamName,
+        adminServiceNum,
+      });
     } catch (error) {
       throw error;
     }
@@ -113,13 +240,130 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   async getByCategory(@Param('teamId') teamId: string): Promise<Incident[]> {
-    // eslint-disable-next-line no-useless-catch
     try {
       return await this.incidentService.getByCategory(teamId);
     } catch (error) {
       throw error;
     }
   }
+  @Post(':incident_number/update-with-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage:
+        process.env.NODE_ENV === 'production'
+          ? memoryStorage() // Use memory storage for Heroku
+          : diskStorage({
+              destination: (req, file, cb) => {
+                const uploadsPath = join(
+                  process.cwd(),
+                  'uploads',
+                  'incident_attachments',
+                );
+                try {
+                  if (!fs.existsSync(uploadsPath)) {
+                    fs.mkdirSync(uploadsPath, { recursive: true });
+                  }
+                  cb(null, uploadsPath);
+                } catch (error) {
+                  console.error('Upload directory creation failed:', error);
+                  cb(error, uploadsPath);
+                }
+              },
+              filename: (req, file, cb) => {
+                const uniqueSuffix =
+                  Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const filename = `${uniqueSuffix}-${file.originalname}`;
+                cb(null, filename);
+              },
+            }),
+      limits: {
+        fileSize: 1024 * 1024, // 1MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'application/pdf',
+          'image/png',
+          'image/jpg',
+          'image/jpeg',
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new Error(
+              'Invalid file type. Only PDF, PNG, JPG, and JPEG files are allowed.',
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  async updateWithAttachment(
+    @Param('incident_number') incident_number: string,
+    @Body() incidentDto: IncidentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<Incident> {
+    try {
+      // If file is uploaded, add attachment info to the DTO
+      if (file) {
+        // Handle production environment (memory storage)
+        if (process.env.NODE_ENV === 'production') {
+          // Generate a unique filename for production
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const filename = `${uniqueSuffix}-${file.originalname}`;
+
+          incidentDto.attachmentFilename = filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+          incidentDto.attachmentBuffer = file.buffer; // Store buffer for cloud storage
+          incidentDto.attachmentMimetype = file.mimetype;
+          incidentDto.attachmentSize = file.size;
+        } else {
+          // For local development (disk storage)
+          incidentDto.attachmentFilename = file.filename;
+          incidentDto.attachmentOriginalName = file.originalname;
+        }
+      }
+
+      const updatedIncident = await this.incidentService.update(
+        incident_number,
+        incidentDto,
+      );
+
+      if (io) {
+        const eventData = { incident: updatedIncident };
+        // Emit real-time update
+        io.emit('incidentUpdated', eventData);
+      }
+
+      return updatedIncident;
+    } catch (error) {
+      // If there's an error and a file was uploaded, clean it up (only for local storage)
+      if (file && file.path && process.env.NODE_ENV !== 'production') {
+        try {
+          require('fs').unlinkSync(file.path);
+        } catch (cleanupError) {
+          console.error('Failed to clean up uploaded file:', cleanupError);
+        }
+      }
+
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(
+        'Failed to update incident: ' + message,
+      );
+    }
+  }
+
   @Put(':incident_number')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
@@ -127,16 +371,13 @@ export class IncidentController {
     @Param('incident_number') incident_number: string,
     @Body() incidentDto: IncidentDto,
   ): Promise<Incident> {
-
     try {
       const updatedIncident = await this.incidentService.update(
         incident_number,
         incidentDto,
       );
 
-
       if (io) {
-
         const eventData = { incident: updatedIncident };
 
         // 1. Send to ALL users for general awareness (no popup, just for Redux state update)
@@ -152,7 +393,6 @@ export class IncidentController {
             },
           );
         }
-
       } else {
       }
 
@@ -168,7 +408,6 @@ export class IncidentController {
   async getIncidentByNumber(
     @Param('incident_number') incident_number: string,
   ): Promise<Incident> {
-    // eslint-disable-next-line no-useless-catch
     try {
       return await this.incidentService.getIncidentByNumber(incident_number);
     } catch (error) {
@@ -182,7 +421,6 @@ export class IncidentController {
   async getIncidentHistory(
     @Param('incident_number') incident_number: string,
   ): Promise<IncidentHistory[]> {
-    // eslint-disable-next-line no-useless-catch
     try {
       return await this.incidentService.getIncidentHistory(incident_number);
     } catch (error) {
@@ -195,7 +433,6 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   testSocket(): { message: string } {
-
     // Create a mock incident for testing
     const mockIncident = {
       incident_number: `TEST-${Date.now()}`,
@@ -208,9 +445,7 @@ export class IncidentController {
       problem: 'Testing socket functionality',
     };
 
-
     if (io) {
-
       // Send all types of notifications for testing
       const eventData = { incident: mockIncident };
 
@@ -236,7 +471,6 @@ export class IncidentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
   testSocketUpdate(): { message: string } {
-
     // Create a mock updated incident for testing
     const mockUpdatedIncident = {
       incident_number: `UPDATE-TEST-${Date.now()}`,
@@ -250,9 +484,7 @@ export class IncidentController {
         'Testing socket update functionality - Status changed to In Progress',
     };
 
-
     if (io) {
-
       const eventData = { incident: mockUpdatedIncident };
 
       // 1. General notification to all users (no popup)
@@ -270,5 +502,159 @@ export class IncidentController {
     }
 
     return { message: 'Test socket update events emitted successfully' };
+  }
+
+  // File upload configuration
+  private getFileUploadOptions() {
+    return {
+      storage: diskStorage({
+        destination: './uploads/incident_attachments',
+        filename: (req, file, callback) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const fileExtension = extname(file.originalname);
+          callback(null, `${uniqueSuffix}${fileExtension}`);
+        },
+      }),
+      fileFilter: (req, file, callback) => {
+        // Check file type
+        const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+        const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+
+        if (allowedTypes.includes(fileExtension)) {
+          callback(null, true);
+        } else {
+          callback(
+            new BadRequestException(
+              'Only PDF, PNG, JPG, and JPEG files are allowed',
+            ),
+            false,
+          );
+        }
+      },
+      limits: {
+        fileSize: 1024 * 1024, // 1MB limit
+      },
+    };
+  }
+
+  // Upload attachment endpoint
+  @Post('upload-attachment')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  @UseInterceptors(
+    FileInterceptor('attachment', {
+      storage:
+        process.env.NODE_ENV === 'production'
+          ? memoryStorage() // Use memory storage for Heroku
+          : diskStorage({
+              destination: (req, file, callback) => {
+                const uploadsPath = join(
+                  process.cwd(),
+                  'uploads',
+                  'incident_attachments',
+                );
+                try {
+                  if (!fs.existsSync(uploadsPath)) {
+                    fs.mkdirSync(uploadsPath, { recursive: true });
+                  }
+                  callback(null, uploadsPath);
+                } catch (error) {
+                  console.error('Upload directory creation failed:', error);
+                  callback(error, uploadsPath);
+                }
+              },
+              filename: (req, file, callback) => {
+                const uniqueSuffix =
+                  Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const fileExtension = extname(file.originalname);
+                callback(null, `${uniqueSuffix}${fileExtension}`);
+              },
+            }),
+      fileFilter: (req, file, callback) => {
+        const allowedTypes = ['pdf', 'png', 'jpg', 'jpeg'];
+        const fileExtension = extname(file.originalname).toLowerCase().slice(1);
+
+        if (allowedTypes.includes(fileExtension)) {
+          callback(null, true);
+        } else {
+          callback(
+            new BadRequestException(
+              'Only PDF, PNG, JPG, and JPEG files are allowed',
+            ),
+            false,
+          );
+        }
+      },
+      limits: {
+        fileSize: 1024 * 1024, // 1MB limit
+      },
+    }),
+  )
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async uploadAttachment(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // Handle production environment (memory storage)
+    if (process.env.NODE_ENV === 'production') {
+      // For production, we need to save the buffer to a temporary location
+      // or use cloud storage service like AWS S3, Cloudinary etc.
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.originalname}`;
+
+      return {
+        success: true,
+        filename: filename,
+        originalName: file.originalname,
+        size: file.size,
+        buffer: file.buffer, // Available in memory storage
+        mimetype: file.mimetype,
+      };
+    }
+
+    // For local development (disk storage)
+    return {
+      success: true,
+      filename: file.filename,
+      originalName: file.originalname,
+      size: file.size,
+      path: file.path,
+    };
+  }
+
+  // Download attachment endpoint
+  @Get('download-attachment/:filename')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  downloadAttachment(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const filePath = join(
+        process.cwd(),
+        'uploads',
+        'incident_attachments',
+        filename,
+      );
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new BadRequestException('File not found');
+      }
+
+      // Set appropriate headers for download
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+      res.setHeader('Content-Type', 'application/octet-stream');
+
+      // Send file
+      res.sendFile(filePath);
+    } catch (error) {
+      throw new BadRequestException('Failed to download file');
+    }
   }
 }

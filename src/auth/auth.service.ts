@@ -155,16 +155,6 @@ export class AuthService {
         }
         if (!user) throw new UnauthorizedException('User creation failed');
         const { accessToken, refreshToken } = this.generateTokens(user);
-        console.log('User details: ', {
-          id: user.id,
-          email: user.email,
-          name: user.display_name,
-          role: user.role,
-          serviceNum: user.serviceNum,
-          contactNumber: user.contactNumber,
-        });
-
-        
 
         return {
           accessToken,

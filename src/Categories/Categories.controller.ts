@@ -41,7 +41,7 @@ export class CategoryController {
     try {
       return await this.categoryService.createMainCategory(dto);
     } catch (error) {
-      // If duplicate name error, send a specific error code
+
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('already exists')) {
         throw new BadRequestException({
