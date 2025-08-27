@@ -5,7 +5,7 @@ import { SLTUser } from '../../sltusers/entities/sltuser.entity';
 
 export class Technician {
   @PrimaryGeneratedColumn('uuid')
-  id: number;
+  id: string;;
 
 
  @OneToOne(()=> SLTUser)
@@ -23,6 +23,9 @@ serviceNum: string;
   @Column()
   team: string;
 
+  @Column({ type: 'enum', enum: ['technician', 'teamLeader'], default: 'technician' })
+  position: 'technician' | 'teamLeader';
+
   @Column()
   cat1: string;
 
@@ -36,38 +39,20 @@ serviceNum: string;
   cat4: string;
 
   @Column()
-  rr: number;
-
-  @Column()
   active: boolean;
-  @Column()
-  tier: number;
+ 
 
   @Column()
-  level: string;
+  tier: string;
 
   @Column()
   teamId: string;
 
-  @Column()
-  designation: string;
+  
 
   @Column({unique: true }) 
   email: string;
 
   @Column({})
   contactNumber: string;
-
-  @Column({ nullable: true })
-  teamLeader?: boolean;
-
-  @Column({ nullable: true })
-  assignAfterSignOff?: boolean;
-
-  @Column({ nullable: true })
-  permanentMember?: boolean;
-
-  @Column({ nullable: true })
-  subrootUser?: boolean;
-
 }

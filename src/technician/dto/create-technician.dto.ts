@@ -1,8 +1,6 @@
-// update-technician.dto.ts
 import {
   IsString,
   IsBoolean,
-  IsNumber,
   IsEmail,
   IsOptional,
   IsNotEmpty,
@@ -10,22 +8,18 @@ import {
 } from 'class-validator';
 
 export class CreateTechnicianDto {
- 
   @IsString()
   @IsNotEmpty()
   serviceNum: string;
-
 
   @IsString()
   @IsNotEmpty()
   name: string;
 
-
   @IsString()
   @IsNotEmpty()
   team: string;
 
-  
   @IsString()
   @IsNotEmpty()
   cat1: string;
@@ -42,51 +36,22 @@ export class CreateTechnicianDto {
   @IsString()
   cat4?: string;
 
-
-  @IsNumber()
-  rr: number;
-
+  @IsOptional()
+  @IsIn(['technician', 'teamLeader'])
+  position?: 'technician' | 'teamLeader';
 
   @IsBoolean()
   active: boolean;
 
-  @IsIn([1, 2])
-tier: number;
   @IsString()
-  level: string;
-
-  @IsOptional()
-  @IsString()
-  teamId?: string;
+  teamId: string;
 
   @IsString()
-  teamLevel: string;
-
-  
-  @IsString()
-  designation: string;
-
+  tier: string;
 
   @IsEmail()
   email: string;
 
-
   @IsString()
   contactNumber: string;
-
- 
-  @IsBoolean()
-  teamLeader: boolean;
-
-
-  @IsBoolean()
-  assignAfterSignOff: boolean;
-
-
-  @IsBoolean()
-  permanentMember: boolean;
-
-
-  @IsBoolean()
-  subrootUser: boolean;
 }

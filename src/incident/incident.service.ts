@@ -95,16 +95,16 @@ export class IncidentService {
 
       // Step 4: Get all active tier1 technicians for the team using round-robin assignment
       let assignedTechnician: Technician | null = null;
-      const levelVariants = ['Tier1', 'tier1'];
+      const tierVariants = ['Tier1', 'tier1'];
       const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
       
       for (const team of teamIdentifiers) {
-        for (const level of levelVariants) {
+        for (const tier of tierVariants) {
           // Find all active tier1 technicians for this team
           const availableTechnicians = await this.technicianRepository.find({
             where: {
               team: team,
-              level: level,
+              tier: tier,
               active: true,
             },
             order: {
@@ -114,7 +114,7 @@ export class IncidentService {
 
           if (availableTechnicians.length > 0) {
             // Implement round-robin assignment
-            const teamKey = `${team}_${level}`;
+            const teamKey = `${team}_${tier}`;
             const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
             
             // Select the technician at current index
@@ -346,17 +346,17 @@ export class IncidentService {
         }
 
         let assignedTechnician: Technician | null = null;
-        const levelVariants = ['Tier1', 'tier1'];
+        const tierVariants = ['Tier1', 'tier1'];
         const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
 
         console.log(`[IncidentService] Searching for Tier1 technicians in teams: ${teamIdentifiers.join(', ')}`);
 
         for (const team of teamIdentifiers) {
-          for (const level of levelVariants) {
+          for (const tier of tierVariants) {
             const availableTechnicians = await this.technicianRepository.find({
               where: {
                 team: team,
-                level: level,
+                tier: tier,
                 active: true,
               },
               order: {
@@ -365,7 +365,7 @@ export class IncidentService {
             });
 
             if (availableTechnicians.length > 0) {
-              const teamKey = `${team}_${level}`;
+              const teamKey = `${team}_${tier}`;
               const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
               assignedTechnician = availableTechnicians[currentIndex];
               const nextIndex = (currentIndex + 1) % availableTechnicians.length;
@@ -415,7 +415,7 @@ export class IncidentService {
     
         
         let tier2Tech: Technician | null = null;
-        const levelVariants = ['Tier2', 'tier2'];
+        const tierVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
         
         // Search by different combinations of team identifiers
@@ -429,18 +429,18 @@ export class IncidentService {
        
         
         for (const team of teamIdentifiers) {
-          for (const level of levelVariants) {
+          for (const tier of tierVariants) {
             if (!team) continue;
             
            
             
             // Try matching both team and teamId fields
             const foundByTeam = await this.technicianRepository.find({
-              where: { team: team, level: level, active: true },
+              where: { team: team, tier: tier, active: true },
             });
             
             const foundByTeamId = await this.technicianRepository.find({
-              where: { teamId: team, level: level, active: true },
+              where: { teamId: team, tier: tier, active: true },
             });
             
            
@@ -473,7 +473,7 @@ export class IncidentService {
         } else {
           // Let's also check what technicians exist for debugging
           const allTier2Techs = await this.technicianRepository.find({
-            where: { level: 'Tier2', active: true },
+            where: { tier: 'Tier2', active: true },
           });
          
           
@@ -790,7 +790,7 @@ export class IncidentService {
     const availableTechnicians = await this.technicianRepository.find({
       where: {
         team: In([teamId, teamName]),
-        level: In(['Tier1', 'tier1']),
+        tier: In(['Tier1', 'tier1']),
         active: true,
       },
       order: { id: 'ASC' },
