@@ -131,4 +131,3 @@ Desktop.ini
 # package-lock.json
 .env.example
 .env.development
-package-lock.json
