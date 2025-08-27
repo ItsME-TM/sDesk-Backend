@@ -44,6 +44,12 @@ export function emitTechnicianStatusChange(
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Behind Heroku / reverse proxies ensure correct protocol (needed for secure cookies & CORS)
+  const expressApp = app.getHttpAdapter().getInstance();
+  if (expressApp?.set) {
+    expressApp.set('trust proxy', 1);
+  }
+
   app.use(cookieParser());
 
   // Ensure uploads directory exists (handle both local and cloud storage)
@@ -79,7 +85,17 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('CORS_NOT_ALLOWED'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
@@ -102,14 +118,16 @@ async function bootstrap() {
     cors: {
       origin: allowedOrigins,
       credentials: true,
-      methods: ['GET', 'POST'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     },
+    // Allow socket.io to serve its own path (default /socket.io/)
+    transports: ['websocket', 'polling'], // support Heroku proxy limitations
   });
 
   await app.init();
   const port = Number(process.env.PORT) || 8000; // Convert to number
   httpServer.listen(port, '0.0.0.0', () => {
-    // Application started successfully
+    console.log(`Server listening on port ${port}`);
   });
 
   // ===== SOCKET EVENTS =====
