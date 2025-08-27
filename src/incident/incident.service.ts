@@ -93,20 +93,29 @@ export class IncidentService {
       // Step 3: Get the team name from mainCategory
       const teamName = categoryItem.subCategory?.mainCategory?.name;
 
-      // Step 4: Get all active tier1 technicians for the team using round-robin assignment
+      // Step 3a: Get the SubCategory name for technician matching
+      const subCategoryName = categoryItem.subCategory?.name;
+      if (!subCategoryName) {
+        throw new BadRequestException(
+          `No sub-category found for category '${incidentDto.category}'`,
+        );
+      }
+
+      // Step 4: Get all active tier1 technicians for the team and sub-category
       let assignedTechnician: Technician | null = null;
       const levelVariants = ['Tier1', 'tier1'];
       const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
-      
+
       for (const team of teamIdentifiers) {
         for (const level of levelVariants) {
-          // Find all active tier1 technicians for this team
+          // Find all active tier1 technicians for this team who are skilled in the sub-category
           const availableTechnicians = await this.technicianRepository.find({
-            where: {
-              team: team,
-              level: level,
-              active: true,
-            },
+            where: [
+              { team: team, level: level, active: true, cat1: subCategoryName },
+              { team: team, level: level, active: true, cat2: subCategoryName },
+              { team: team, level: level, active: true, cat3: subCategoryName },
+              { team: team, level: level, active: true, cat4: subCategoryName },
+            ],
             order: {
               id: 'ASC', // Consistent ordering for round-robin
             },
@@ -114,16 +123,16 @@ export class IncidentService {
 
           if (availableTechnicians.length > 0) {
             // Implement round-robin assignment
-            const teamKey = `${team}_${level}`;
+            const teamKey = `${team}_${level}_${subCategoryName}`; // More specific key
             const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
-            
+
             // Select the technician at current index
             assignedTechnician = availableTechnicians[currentIndex];
-            
+
             // Update index for next assignment (wrap around to 0 if at end)
             const nextIndex = (currentIndex + 1) % availableTechnicians.length;
             this.teamAssignmentIndex.set(teamKey, nextIndex);
-            
+
             break;
           }
         }
@@ -293,8 +302,6 @@ export class IncidentService {
     incidentDto: IncidentDto,
   ): Promise<Incident> {
     try {
-     
-
       const incident = await this.incidentRepository.findOne({
         where: { incident_number },
       });
@@ -309,19 +316,22 @@ export class IncidentService {
         );
       }
 
-      // --- Get Original Incident to check for category change ---
-      const originalIncident = await this.incidentRepository.findOne({
-        where: { incident_number },
-      });
+      // Store original values for comparison
+      const originalStatus = incident.status;
+      const originalHandler = incident.handler;
+      const originalCategory = incident.category;
 
-      if (!originalIncident) {
-        throw new NotFoundException(`Incident with incident_number ${incident_number} not found`);
-      }
+      // Track if this is a status change to CLOSED or a transfer operation
+      const isClosingIncident = incidentDto.status === IncidentStatus.CLOSED && originalStatus !== IncidentStatus.CLOSED;
+      const isTransferOperation = (incidentDto.automaticallyAssignForTier2 || incidentDto.assignForTeamAdmin) && 
+                                 incidentDto.handler && incidentDto.handler !== originalHandler;
 
-      const categoryChanged = incidentDto.category && incidentDto.category !== originalIncident.category;
+      this.logger.log(`[UPDATE] Incident ${incident_number}: isClosing=${isClosingIncident}, isTransfer=${isTransferOperation}`);
+
+      // --- Category Change Logic ---
+      const categoryChanged = incidentDto.category && incidentDto.category !== originalCategory;
 
       if (categoryChanged) {
-       
         // Find CategoryItem by name (incidentDto.category is the category name)
         const categoryItem = await this.categoryItemRepository.findOne({
           where: { name: incidentDto.category },
@@ -349,8 +359,6 @@ export class IncidentService {
         const levelVariants = ['Tier1', 'tier1'];
         const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
 
-        console.log(`[IncidentService] Searching for Tier1 technicians in teams: ${teamIdentifiers.join(', ')}`);
-
         for (const team of teamIdentifiers) {
           for (const level of levelVariants) {
             const availableTechnicians = await this.technicianRepository.find({
@@ -359,19 +367,13 @@ export class IncidentService {
                 level: level,
                 active: true,
               },
-              order: {
-                id: 'ASC',
-              },
+              order: { id: 'ASC' },
             });
 
             if (availableTechnicians.length > 0) {
-              const teamKey = `${team}_${level}`;
-              const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
-              assignedTechnician = availableTechnicians[currentIndex];
-              const nextIndex = (currentIndex + 1) % availableTechnicians.length;
-              this.teamAssignmentIndex.set(teamKey, nextIndex);
-              console.log(`[IncidentService] Found and assigned Tier1 technician: ${assignedTechnician.serviceNum} from team ${team}`);
-              break;
+              // Use enhanced selection logic
+              assignedTechnician = await this.selectBestTechnician(availableTechnicians);
+              if (assignedTechnician) break;
             }
           }
           if (assignedTechnician) break;
@@ -384,11 +386,7 @@ export class IncidentService {
           );
         }
 
-        // Assign the incident to the newly found Tier1 technician
         incidentDto.handler = assignedTechnician.serviceNum;
-        console.log(`[IncidentService] Incident ${incident_number} reassigned to Tier1 technician: ${assignedTechnician.serviceNum}`);
-
-        // Clear other assignment flags if category changed and new assignment made
         incidentDto.automaticallyAssignForTier2 = false;
         incidentDto.assignForTeamAdmin = false;
       }
@@ -570,8 +568,30 @@ export class IncidentService {
       history.attachmentOriginalName = incidentDto.attachmentOriginalName || '';
       await this.incidentHistoryRepository.save(history);
       // --- End IncidentHistory entry ---
+
+      // Update the incident
       Object.assign(incident, incidentDto);
-      return await this.incidentRepository.save(incident);
+      const updatedIncident = await this.incidentRepository.save(incident);
+
+      // --- TRIGGER AUTO-ASSIGNMENT AFTER UPDATE ---
+      // Only trigger if this was a closing or transfer operation
+      if (isClosingIncident || isTransferOperation) {
+        const technicianServiceNum = originalHandler; // Use the original handler who closed/transferred
+        
+        if (technicianServiceNum) {
+          this.logger.log(`[AUTO-ASSIGNMENT] Triggering assignment for technician ${technicianServiceNum} after ${isClosingIncident ? 'closing' : 'transferring'} incident ${incident_number}`);
+          
+          // Trigger assignment in background (don't wait for it)
+          setImmediate(() => {
+            this.tryAssignNewIncidentToTechnician(technicianServiceNum, isClosingIncident ? 'CLOSED' : 'TRANSFERRED')
+              .catch(error => {
+                this.logger.error(`[AUTO-ASSIGNMENT] Failed to assign new incident to ${technicianServiceNum}: ${error.message}`);
+              });
+          });
+        }
+      }
+
+      return updatedIncident;
     } catch (error) {
       console.error(`[IncidentService] Error updating incident ${incident_number}:`, error);
       if (
@@ -741,6 +761,7 @@ export class IncidentService {
 
     const pendingIncidents = await this.incidentRepository.find({
       where: { status: IncidentStatus.PENDING_ASSIGNMENT },
+      order: { update_on: 'ASC' }, // Process oldest first
     });
 
     if (pendingIncidents.length === 0) {
@@ -766,7 +787,7 @@ export class IncidentService {
     }
 
     this.logger.log(
-      `Completed assignment task. Assigned ${assignmentsCount} incidents.`,
+      `Completed assignment task. Assigned ${assignmentsCount} incidents. ${pendingIncidents.length - assignmentsCount} still pending.`,
     );
     return assignmentsCount;
   }
@@ -787,12 +808,21 @@ export class IncidentService {
     const teamId = categoryItem.subCategory.mainCategory.id;
     const teamName = categoryItem.subCategory.mainCategory.name;
 
+    const subCategoryName = categoryItem.subCategory?.name;
+    if (!subCategoryName) {
+      this.logger.warn(
+        `Could not find sub-category name for category '${incident.category}' on incident ${incident.incident_number}. Skipping.`,
+      );
+      return false;
+    }
+
     const availableTechnicians = await this.technicianRepository.find({
-      where: {
-        team: In([teamId, teamName]),
-        level: In(['Tier1', 'tier1']),
-        active: true,
-      },
+      where: [
+        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat1: subCategoryName },
+        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat2: subCategoryName },
+        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat3: subCategoryName },
+        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat4: subCategoryName },
+      ],
       order: { id: 'ASC' },
     });
 
@@ -803,35 +833,245 @@ export class IncidentService {
       return false;
     }
 
-    const teamKey = `${teamId}_Tier1`;
-    const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
-    const assignedTechnician = availableTechnicians[currentIndex];
-    const nextIndex = (currentIndex + 1) % availableTechnicians.length;
-    this.teamAssignmentIndex.set(teamKey, nextIndex);
+    // --- Enhanced Queue-based load balancing ---
+    // Find technician with least active workload (only OPEN and IN_PROGRESS incidents count)
+    let selectedTechnician: Technician | null = null;
+    let minWorkload = Number.MAX_SAFE_INTEGER;
+    
+    for (const tech of availableTechnicians) {
+      const activeWorkload = await this.incidentRepository.count({
+        where: { 
+          handler: tech.serviceNum, 
+          status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+        },
+      });
+      
+      // Only assign if technician has less than 3 active incidents
+      if (activeWorkload < 3 && activeWorkload < minWorkload) {
+        minWorkload = activeWorkload;
+        selectedTechnician = tech;
+      }
+    }
 
-    incident.handler = assignedTechnician.serviceNum;
+    if (!selectedTechnician) {
+      this.logger.log(
+        `All technicians for team '${teamName}' (ID: ${teamId}) have reached max active workload (3 incidents). Incident ${incident.incident_number} remains pending.`,
+      );
+      return false;
+    }
+
+    incident.handler = selectedTechnician.serviceNum;
     incident.status = IncidentStatus.OPEN;
     await this.incidentRepository.save(incident);
 
-    const assignedToDisplayName = await this.getDisplayNameByServiceNum(
-      incident.handler,
-    );
-    const updatedByDisplayName = 'System';
+    await this.createIncidentHistory(incident, selectedTechnician.serviceNum, 'Incident automatically assigned by the system.');
 
+    this.logger.log(
+      `Successfully assigned incident ${incident.incident_number} to technician ${selectedTechnician.serviceNum}. Current active workload: ${minWorkload + 1}/3`,
+    );
+
+    return true;
+  }
+
+  /**
+   * Checks if a technician is skilled for a given incident's sub-category.
+   */
+  private async isTechnicianSkilledForIncident(technician: Technician, incident: Incident): Promise<boolean> {
+    const technicianSkills = [technician.cat1, technician.cat2, technician.cat3, technician.cat4].filter(Boolean);
+    if (technicianSkills.length === 0) {
+        return false; // No skills, no match
+    }
+
+    const categoryItem = await this.categoryItemRepository.findOne({
+        where: { name: incident.category },
+        relations: ['subCategory'],
+    });
+
+    const subCategoryName = categoryItem?.subCategory?.name;
+    if (!subCategoryName) {
+        return false; // Incident has no sub-category, cannot match
+    }
+
+    return technicianSkills.includes(subCategoryName);
+  }
+
+  /**
+   * Try to assign a new pending incident to a specific technician after they close/transfer an incident
+   */
+  private async tryAssignNewIncidentToTechnician(technicianServiceNum: string, action: string): Promise<void> {
+    this.logger.log(`[AUTO-ASSIGNMENT] Attempting to assign new incident to technician ${technicianServiceNum} after ${action}`);
+
+    // Check technician's current active workload
+    const currentActiveWorkload = await this.incidentRepository.count({
+      where: { 
+        handler: technicianServiceNum, 
+        status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+      },
+    });
+
+    this.logger.log(`[AUTO-ASSIGNMENT] Technician ${technicianServiceNum} current active workload: ${currentActiveWorkload}/3`);
+
+    // Only assign if technician has capacity (less than 3 active incidents)
+    if (currentActiveWorkload >= 3) {
+      this.logger.log(`[AUTO-ASSIGNMENT] Technician ${technicianServiceNum} already at max capacity (${currentActiveWorkload}/3)`);
+      return;
+    }
+
+    // Get technician details to find their team
+    const technician = await this.technicianRepository.findOne({
+      where: { serviceNum: technicianServiceNum, active: true },
+    });
+
+    if (!technician) {
+      this.logger.warn(`[AUTO-ASSIGNMENT] Technician ${technicianServiceNum} not found or not active`);
+      return;
+    }
+
+    // Find pending incidents for the same team/categories
+    const pendingIncidents = await this.findPendingIncidentsForTechnician(technician);
+
+    // Iterate through the team's pending incidents to find one that matches the technician's skills
+    for (const incidentToAssign of pendingIncidents) {
+      const isSkilled = await this.isTechnicianSkilledForIncident(technician, incidentToAssign);
+      if (isSkilled) {
+        this.logger.log(`[AUTO-ASSIGNMENT] Found skill-matched incident ${incidentToAssign.incident_number} for technician ${technician.serviceNum}.`);
+        await this.assignIncidentToTechnician(incidentToAssign, technician, `Automatic assignment after ${action}`);
+        return; // Exit after assigning the first suitable incident
+      }
+    }
+    
+    this.logger.log(`[AUTO-ASSIGNMENT] No skill-matched pending incidents found in the team queue for technician ${technicianServiceNum}.`);
+    
+    // Fallback logic from original code: try to find any pending incident.
+    // We will retain this but add the skill check.
+    const anyPendingIncident = await this.incidentRepository.findOne({
+      where: { status: IncidentStatus.PENDING_ASSIGNMENT },
+      order: { update_on: 'ASC' }, // Oldest first
+    });
+
+    if (anyPendingIncident) {
+      // We must ensure we don't try to re-assign an incident from the team queue that we already know isn't a skill match
+      if (pendingIncidents.some(p => p.incident_number === anyPendingIncident.incident_number)) {
+        this.logger.log(`[AUTO-ASSIGNMENT] Oldest pending incident is from the same team but not a skill match. Skipping.`);
+        return;
+      }
+
+      const isSkilled = await this.isTechnicianSkilledForIncident(technician, anyPendingIncident);
+      if (isSkilled) {
+        this.logger.log(`[AUTO-ASSIGNMENT] Found general pending incident ${anyPendingIncident.incident_number} for cross-team assignment.`);
+        await this.assignIncidentToTechnician(anyPendingIncident, technician, `Cross-team assignment after ${action}`);
+      } else {
+        this.logger.log(`[AUTO-ASSIGNMENT] Found a general pending incident, but technician is not skilled. Skipping.`);
+      }
+    }
+  }
+
+  /**
+   * Find pending incidents that match the technician's team categories
+   */
+  private async findPendingIncidentsForTechnician(technician: Technician): Promise<Incident[]> {
+    // Get all category items for technician's team
+    const teamIdentifiers = [technician.team, technician.teamId].filter(Boolean);
+    
+    let categoryItems: CategoryItem[] = [];
+    
+    for (const teamId of teamIdentifiers) {
+      const items = await this.categoryItemRepository
+        .createQueryBuilder('categoryItem')
+        .leftJoinAndSelect('categoryItem.subCategory', 'subCategory')
+        .leftJoinAndSelect('subCategory.mainCategory', 'mainCategory')
+        .where('mainCategory.id = :teamId OR mainCategory.name = :teamName', {
+          teamId: teamId,
+          teamName: teamId,
+        })
+        .getMany();
+      
+      categoryItems.push(...items);
+    }
+
+    // Remove duplicates
+    categoryItems = categoryItems.filter((item, index, self) => 
+      index === self.findIndex(i => i.name === item.name)
+    );
+
+    if (categoryItems.length === 0) {
+      this.logger.warn(`[AUTO-ASSIGNMENT] No category items found for technician ${technician.serviceNum}'s team`);
+      return [];
+    }
+
+    const categoryNames = categoryItems.map(item => item.name);
+    const categoryCodes = categoryItems.map(item => item.category_code);
+    
+    this.logger.log(`[AUTO-ASSIGNMENT] Looking for pending incidents in categories: ${categoryNames.join(', ')}`);
+
+    // Find pending incidents for these categories
+    const pendingIncidents = await this.incidentRepository
+      .createQueryBuilder('incident')
+      .where('incident.status = :status', { status: IncidentStatus.PENDING_ASSIGNMENT })
+      .andWhere('(incident.category IN (:...categoryNames) OR incident.category IN (:...categoryCodes))', {
+        categoryNames,
+        categoryCodes,
+      })
+      .orderBy('incident.update_on', 'ASC') // Oldest first
+      .getMany();
+
+    this.logger.log(`[AUTO-ASSIGNMENT] Found ${pendingIncidents.length} pending incidents for technician's categories`);
+    
+    return pendingIncidents;
+  }
+
+  /**
+   * Assign a specific incident to a specific technician
+   */
+  private async assignIncidentToTechnician(incident: Incident, technician: Technician, comment: string): Promise<void> {
+    incident.handler = technician.serviceNum;
+    incident.status = IncidentStatus.OPEN;
+    await this.incidentRepository.save(incident);
+
+    await this.createIncidentHistory(incident, technician.serviceNum, comment);
+
+    this.logger.log(`[AUTO-ASSIGNMENT] Successfully assigned incident ${incident.incident_number} to technician ${technician.serviceNum}`);
+  }
+
+  /**
+   * Enhanced technician selection with workload consideration
+   */
+  private async selectBestTechnician(availableTechnicians: Technician[]): Promise<Technician | null> {
+    let selectedTechnician: Technician | null = null;
+    let minWorkload = Number.MAX_SAFE_INTEGER;
+    
+    for (const tech of availableTechnicians) {
+      const activeWorkload = await this.incidentRepository.count({
+        where: { 
+          handler: tech.serviceNum, 
+          status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+        },
+      });
+      
+      // Only consider technicians with less than 3 active incidents
+      if (activeWorkload < 3 && activeWorkload < minWorkload) {
+        minWorkload = activeWorkload;
+        selectedTechnician = tech;
+      }
+    }
+    
+    return selectedTechnician;
+  }
+
+  /**
+   * Helper method to create incident history entries
+   */
+  private async createIncidentHistory(incident: Incident, assignedTo: string, comment: string): Promise<void> {
+    const assignedToDisplayName = await this.getDisplayNameByServiceNum(assignedTo);
+    
     const history = new IncidentHistory();
     history.incidentNumber = incident.incident_number;
     history.status = incident.status;
     history.assignedTo = assignedToDisplayName;
-    history.updatedBy = updatedByDisplayName;
-    history.comments = 'Incident automatically assigned by the system.';
+    history.updatedBy = 'System';
+    history.comments = comment;
     history.category = incident.category;
     history.location = incident.location;
     await this.incidentHistoryRepository.save(history);
-
-    this.logger.log(
-      `Successfully assigned incident ${incident.incident_number} to technician ${assignedTechnician.serviceNum}.`,
-    );
-
-    return true;
   }
 }
