@@ -735,7 +735,7 @@ export class IncidentService {
 
   // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async handlePendingAssignments(): Promise<number> {
     this.logger.log('Running scheduled task to assign pending incidents...');
 
