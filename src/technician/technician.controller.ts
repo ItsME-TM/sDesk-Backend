@@ -114,7 +114,7 @@ export class TechnicianController {
 
   @Put('technician/:serviceNum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'technician')
   async updateTechnician(
     @Param('serviceNum') serviceNum: string,
     @Body() dto: CreateTechnicianDto,
