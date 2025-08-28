@@ -325,6 +325,7 @@ export class IncidentService {
       // Variables to track transfer operations for socket events
       let tier2Tech: Technician | null = null;
       let teamAdmin: TeamAdmin | null = null;
+      let reassignedTechnician: Technician | null = null; // Track category-based reassignment
 
       // Track if this is a status change to CLOSED or a transfer operation
       const isClosingIncident = incidentDto.status === IncidentStatus.CLOSED && originalStatus !== IncidentStatus.CLOSED;
@@ -390,6 +391,9 @@ export class IncidentService {
             `No active Tier1 technician found for team associated with new category '${incidentDto.category}'.`,
           );
         }
+
+        // Track the reassigned technician for socket events
+        reassignedTechnician = assignedTechnician;
 
         incidentDto.handler = assignedTechnician.serviceNum;
         incidentDto.automaticallyAssignForTier2 = false;
@@ -586,7 +590,7 @@ export class IncidentService {
       const updatedIncident = await this.incidentRepository.save(incident);
 
       // --- EMIT SOCKET EVENTS FOR TRANSFERS ---
-      // Check if this was a Tier2 transfer or team admin assignment
+      // Check if this was a Tier2 transfer, team admin assignment, category-based reassignment, or manual reassignment
       if (incidentDto.automaticallyAssignForTier2 && tier2Tech) {
         // This was a Tier2 transfer
         this.emitIncidentSocketEvents(updatedIncident, 'transferred');
@@ -595,6 +599,14 @@ export class IncidentService {
         // This was a team admin assignment
         this.emitIncidentSocketEvents(updatedIncident, 'transferred');
         this.logger.log(`[SOCKET] Emitted transfer event for incident ${updatedIncident.incident_number} to team admin ${teamAdmin.serviceNumber}`);
+      } else if (reassignedTechnician) {
+        // This was a category-based reassignment to a different team technician
+        this.emitIncidentSocketEvents(updatedIncident, 'transferred');
+        this.logger.log(`[SOCKET] Emitted reassignment event for incident ${updatedIncident.incident_number} to technician ${reassignedTechnician.serviceNum} due to category change`);
+      } else if (incidentDto.handler && incidentDto.handler !== originalHandler) {
+        // This was a manual handler reassignment (e.g., team admin reassigning to another technician)
+        this.emitIncidentSocketEvents(updatedIncident, 'transferred');
+        this.logger.log(`[SOCKET] Emitted manual reassignment event for incident ${updatedIncident.incident_number} from ${originalHandler} to ${incidentDto.handler}`);
       }
 
       // --- TRIGGER AUTO-ASSIGNMENT AFTER UPDATE ---
