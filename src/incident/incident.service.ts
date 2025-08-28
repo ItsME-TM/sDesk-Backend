@@ -322,6 +322,10 @@ export class IncidentService {
       const originalHandler = incident.handler;
       const originalCategory = incident.category;
 
+      // Variables to track transfer operations for socket events
+      let tier2Tech: Technician | null = null;
+      let teamAdmin: TeamAdmin | null = null;
+
       // Track if this is a status change to CLOSED or a transfer operation
       const isClosingIncident = incidentDto.status === IncidentStatus.CLOSED && originalStatus !== IncidentStatus.CLOSED;
       const isTransferOperation = (incidentDto.automaticallyAssignForTier2 || incidentDto.assignForTeamAdmin) && 
@@ -413,7 +417,7 @@ export class IncidentService {
         
     
         
-        let tier2Tech: Technician | null = null;
+        let tier2TechTemp: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
         
@@ -466,9 +470,13 @@ export class IncidentService {
         
         if (uniqueCandidates.length > 0) {
           // Randomly select a technician
-          tier2Tech = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
-          incidentDto.handler = tier2Tech.serviceNum;
+          tier2TechTemp = uniqueCandidates[Math.floor(Math.random() * uniqueCandidates.length)];
+          incidentDto.handler = tier2TechTemp.serviceNum;
           
+          // Assign to the method-level variable for socket events
+          tier2Tech = tier2TechTemp;
+          
+          console.log(`🎯 Selected Tier2 technician: ${tier2TechTemp.serviceNum} from ${uniqueCandidates.length} candidates`);
         } else {
           // Let's also check what technicians exist for debugging
           const allTier2Techs = await this.technicianRepository.find({
@@ -514,25 +522,25 @@ export class IncidentService {
 
       
 
-        let teamAdmin: TeamAdmin | null = null;
+        let teamAdminTemp: TeamAdmin | null = null;
 
         for (const teamIdentifier of teamIdentifiers) {
          
           
-          teamAdmin = await this.teamAdminRepository.findOne({
+          teamAdminTemp = await this.teamAdminRepository.findOne({
             where: [
               { teamId: teamIdentifier, active: true },
               { teamName: teamIdentifier, active: true },
             ],
           });
 
-          if (teamAdmin) {
+          if (teamAdminTemp) {
        
             break;
           }
         }
 
-        if (!teamAdmin) {
+        if (!teamAdminTemp) {
           // Let's also check what team admins exist for debugging
           const allTeamAdmins = await this.teamAdminRepository.find({
             where: { active: true },
@@ -543,6 +551,9 @@ export class IncidentService {
             `No active team admin found for technician's team (${teamIdentifiers.join(', ')}). Available team admins: ${allTeamAdmins.map(ta => `${ta.serviceNumber} (team: ${ta.teamName})`).join(', ')}`,
           );
         }
+
+        // Assign to the method-level variable for socket events
+        teamAdmin = teamAdminTemp;
 
         // Assign the incident to the team admin
         incidentDto.handler = teamAdmin.serviceNumber;
@@ -573,6 +584,18 @@ export class IncidentService {
       // Update the incident
       Object.assign(incident, incidentDto);
       const updatedIncident = await this.incidentRepository.save(incident);
+
+      // --- EMIT SOCKET EVENTS FOR TRANSFERS ---
+      // Check if this was a Tier2 transfer or team admin assignment
+      if (incidentDto.automaticallyAssignForTier2 && tier2Tech) {
+        // This was a Tier2 transfer
+        this.emitIncidentSocketEvents(updatedIncident, 'transferred');
+        this.logger.log(`[SOCKET] Emitted transfer event for incident ${updatedIncident.incident_number} to Tier2 technician ${tier2Tech.serviceNum}`);
+      } else if (incidentDto.assignForTeamAdmin && teamAdmin) {
+        // This was a team admin assignment
+        this.emitIncidentSocketEvents(updatedIncident, 'transferred');
+        this.logger.log(`[SOCKET] Emitted transfer event for incident ${updatedIncident.incident_number} to team admin ${teamAdmin.serviceNumber}`);
+      }
 
       // --- TRIGGER AUTO-ASSIGNMENT AFTER UPDATE ---
       // Only trigger if this was a closing or transfer operation
@@ -1027,7 +1050,7 @@ export class IncidentService {
   /**
    * Helper method to emit socket events for incident updates
    */
-  private emitIncidentSocketEvents(incident: Incident, eventType: 'created' | 'updated' | 'assigned'): void {
+  private emitIncidentSocketEvents(incident: Incident, eventType: 'created' | 'updated' | 'assigned' | 'transferred'): void {
     if (io) {
       const eventData = { incident };
 
@@ -1070,6 +1093,20 @@ export class IncidentService {
             {
               ...eventData,
               message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      } else if (eventType === 'transferred') {
+        // Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_updated', eventData);
+
+        // Send targeted notification to newly assigned Tier2 technician (with popup)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `Incident ${incident.incident_number} has been transferred to you`,
             },
           );
         }
