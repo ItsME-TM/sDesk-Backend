@@ -16,6 +16,7 @@ import { IncidentHistory } from './entities/incident-history.entity';
 import { CategoryItem } from '../Categories/Entities/Categories.entity';
 import { SLTUser } from '../sltusers/entities/sltuser.entity';
 import { TeamAdmin } from '../teamadmin/entities/teamadmin.entity';
+import { io } from '../main';
 
 @Injectable()
 export class IncidentService {
@@ -866,6 +867,9 @@ export class IncidentService {
 
     await this.createIncidentHistory(incident, selectedTechnician.serviceNum, 'Incident automatically assigned by the system.');
 
+    // Emit socket events for live updates
+    this.emitIncidentSocketEvents(incident, 'assigned');
+
     this.logger.log(
       `Successfully assigned incident ${incident.incident_number} to technician ${selectedTechnician.serviceNum}. Current active workload: ${minWorkload + 1}/3`,
     );
@@ -1021,6 +1025,59 @@ export class IncidentService {
   }
 
   /**
+   * Helper method to emit socket events for incident updates
+   */
+  private emitIncidentSocketEvents(incident: Incident, eventType: 'created' | 'updated' | 'assigned'): void {
+    if (io) {
+      const eventData = { incident };
+
+      if (eventType === 'created') {
+        // Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_created', eventData);
+
+        // Send to specific assigned technician (with popup notification)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      } else if (eventType === 'updated') {
+        // Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_updated', eventData);
+
+        // Send targeted notification to assigned handler (with popup)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_updated_assigned',
+            {
+              ...eventData,
+              message: `Incident ${incident.incident_number} has been updated`,
+            },
+          );
+        }
+      } else if (eventType === 'assigned') {
+        // Send to ALL users for general awareness (no popup, just for Redux state update)
+        io.emit('incident_updated', eventData);
+
+        // Send targeted notification to newly assigned technician (with popup)
+        if (incident.handler) {
+          io.to(`user_${incident.handler}`).emit(
+            'incident_assigned_technician',
+            {
+              ...eventData,
+              message: `You have been assigned incident ${incident.incident_number}`,
+            },
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Assign a specific incident to a specific technician
    */
   private async assignIncidentToTechnician(incident: Incident, technician: Technician, comment: string): Promise<void> {
@@ -1029,6 +1086,9 @@ export class IncidentService {
     await this.incidentRepository.save(incident);
 
     await this.createIncidentHistory(incident, technician.serviceNum, comment);
+
+    // Emit socket events for live updates
+    this.emitIncidentSocketEvents(incident, 'assigned');
 
     this.logger.log(`[AUTO-ASSIGNMENT] Successfully assigned incident ${incident.incident_number} to technician ${technician.serviceNum}`);
   }
