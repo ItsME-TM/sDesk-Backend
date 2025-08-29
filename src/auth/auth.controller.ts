@@ -37,7 +37,10 @@ export class AuthController {
 
       //  Update technician to active if login was successful
       if (user.role === 'technician' && user.serviceNum) {
-        this.technicianService.updateTechnicianActive(user.serviceNum, true);
+        await this.technicianService.updateTechnicianActive(
+          user.serviceNum,
+          true,
+        );
 
         // Emit WebSocket event so all admins update instantly
         emitTechnicianStatusChange(user.serviceNum, true);
@@ -67,10 +70,10 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout(
+  async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): { success: boolean; message: string } {
+  ): Promise<{ success: boolean; message: string }> {
     try {
       const refreshToken = req.cookies?.refreshToken;
       const token = req.cookies?.jwt;
@@ -82,12 +85,12 @@ export class AuthController {
             process.env.JWT_SECRET || 'your-secret-key',
           ) as UserPayload;
           if (payload.role === 'technician' && payload.serviceNum) {
-            this.technicianService.updateTechnicianActive(
+            void this.technicianService.updateTechnicianActive(
               payload.serviceNum,
               false,
             );
             if (payload.role === 'technician' && payload.serviceNum) {
-              this.technicianService.updateTechnicianActive(
+              await this.technicianService.updateTechnicianActive(
                 payload.serviceNum,
                 false,
               );

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -17,9 +16,6 @@ import { notifyInactiveByAdmin, emitTechnicianStatusChange } from '../main';
 export class TechnicianService {
   [x: string]: any;
 
-  updateTechnicianActive(serviceNum: string, arg1: boolean) {
-    throw new Error('Method not implemented.');
-  }
   constructor(
     @InjectRepository(Technician)
     private readonly technicianRepo: Repository<Technician>,
@@ -61,7 +57,7 @@ export class TechnicianService {
       }
 
       return await this.technicianRepo.find(findOptions);
-    } catch (error) {
+    } catch {
       throw new InternalServerErrorException('Failed to fetch technicians.');
     }
   }
@@ -128,13 +124,33 @@ export class TechnicianService {
     }
   }
 
+  async updateTechnicianActive(
+    serviceNum: string,
+    active: boolean,
+  ): Promise<void> {
+    const result = await this.technicianRepo.update({ serviceNum }, { active });
+
+    if (result.affected === 0) {
+      throw new NotFoundException(
+        `Technician with Service Number "${serviceNum}" not found.`,
+      );
+    }
+  }
+
+  async findActiveTechnicians(): Promise<Technician[]> {
+    return this.technicianRepo.find({ where: { active: true } });
+  }
+
   async checkTechnicianStatus(): Promise<
     { serviceNum: string; active: string }[]
   > {
     try {
       const all = await this.technicianRepo.find();
-      return all.map((t) => ({ serviceNum: t.serviceNum, active: 'true' })); // simplified logic
-    } catch (error) {
+      return all.map((t) => ({
+        serviceNum: t.serviceNum,
+        active: t.active.toString(),
+      }));
+    } catch {
       throw new Error('Failed to retrieve technician status');
     }
   }

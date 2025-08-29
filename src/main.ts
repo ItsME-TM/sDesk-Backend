@@ -7,6 +7,9 @@ import * as cookieParser from 'cookie-parser';
 import { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { join } from 'path';
+import * as express from 'express';
+import * as fs from 'fs';
 
 // Define the expected user data structure
 interface UserData {
@@ -27,7 +30,6 @@ export function notifyInactiveByAdmin(serviceNum: string) {
       message: 'You are inactive by admin.',
     });
   } else {
-    /* empty */
   }
 }
 
@@ -43,6 +45,22 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+
+  // Ensure uploads directory exists (handle both local and cloud storage)
+  const uploadsDir = join(process.cwd(), 'uploads', 'incident_attachments');
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch (error) {
+    console.warn(
+      'Could not create uploads directory (possibly read-only filesystem):',
+      error.message,
+    );
+  }
+
+  // Serve static files from uploads directory
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   const allowedOrigins = [
     'https://sdesk-frontend.vercel.app',
