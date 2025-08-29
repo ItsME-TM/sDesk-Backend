@@ -104,19 +104,18 @@ export class IncidentService {
 
       // Step 4: Get all active tier1 technicians for the team and sub-category
       let assignedTechnician: Technician | null = null;
-      const levelVariants = ['Tier1', 'tier1'];
+      const tierVariants = ['Tier1', 'tier1'];
       const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
 
       for (const team of teamIdentifiers) {
         for (const level of levelVariants) {
-          // Find all active tier1 technicians for this team who are skilled in the sub-category
+          // Find all active tier1 technicians for this team
           const availableTechnicians = await this.technicianRepository.find({
-            where: [
-              { team: team, level: level, active: true, cat1: subCategoryName },
-              { team: team, level: level, active: true, cat2: subCategoryName },
-              { team: team, level: level, active: true, cat3: subCategoryName },
-              { team: team, level: level, active: true, cat4: subCategoryName },
-            ],
+            where: {
+              team: team,
+              level: level,
+              active: true,
+            },
             order: {
               id: 'ASC', // Consistent ordering for round-robin
             },
@@ -124,7 +123,7 @@ export class IncidentService {
 
           if (availableTechnicians.length > 0) {
             // Implement round-robin assignment
-            const teamKey = `${team}_${level}_${subCategoryName}`; // More specific key
+            const teamKey = `${team}_${level}`;
             const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
 
             // Select the technician at current index
@@ -362,24 +361,28 @@ export class IncidentService {
         }
 
         let assignedTechnician: Technician | null = null;
-        const levelVariants = ['Tier1', 'tier1'];
+        const tierVariants = ['Tier1', 'tier1'];
         const teamIdentifiers = [mainCategoryId, teamName].filter(Boolean);
 
         for (const team of teamIdentifiers) {
-          for (const level of levelVariants) {
+          for (const tier of tierVariants) {
             const availableTechnicians = await this.technicianRepository.find({
               where: {
                 team: team,
-                level: level,
+                tier: tier,
                 active: true,
               },
               order: { id: 'ASC' },
             });
 
             if (availableTechnicians.length > 0) {
-              // Use enhanced selection logic
-              assignedTechnician = await this.selectBestTechnician(availableTechnicians);
-              if (assignedTechnician) break;
+              const teamKey = `${team}_${level}`;
+              const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+              assignedTechnician = availableTechnicians[currentIndex];
+              const nextIndex = (currentIndex + 1) % availableTechnicians.length;
+              this.teamAssignmentIndex.set(teamKey, nextIndex);
+              console.log(`[IncidentService] Found and assigned Tier1 technician: ${assignedTechnician.serviceNum} from team ${team}`);
+              break;
             }
           }
           if (assignedTechnician) break;
@@ -421,7 +424,7 @@ export class IncidentService {
         
     
         
-        let tier2TechTemp: Technician | null = null;
+        let tier2Tech: Technician | null = null;
         const levelVariants = ['Tier2', 'tier2'];
         const candidates: Technician[] = [];
         
@@ -436,18 +439,18 @@ export class IncidentService {
        
         
         for (const team of teamIdentifiers) {
-          for (const level of levelVariants) {
+          for (const tier of tierVariants) {
             if (!team) continue;
             
            
             
             // Try matching both team and teamId fields
             const foundByTeam = await this.technicianRepository.find({
-              where: { team: team, level: level, active: true },
+              where: { team: team, tier: tier, active: true },
             });
             
             const foundByTeamId = await this.technicianRepository.find({
-              where: { teamId: team, level: level, active: true },
+              where: { teamId: team, tier: tier, active: true },
             });
             
            
@@ -484,7 +487,7 @@ export class IncidentService {
         } else {
           // Let's also check what technicians exist for debugging
           const allTier2Techs = await this.technicianRepository.find({
-            where: { level: 'Tier2', active: true },
+            where: { tier: 'Tier2', active: true },
           });
          
           
@@ -791,7 +794,7 @@ export class IncidentService {
 
   // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async handlePendingAssignments(): Promise<number> {
     this.logger.log('Running scheduled task to assign pending incidents...');
 
@@ -853,12 +856,11 @@ export class IncidentService {
     }
 
     const availableTechnicians = await this.technicianRepository.find({
-      where: [
-        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat1: subCategoryName },
-        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat2: subCategoryName },
-        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat3: subCategoryName },
-        { team: In([teamId, teamName]), level: In(['Tier1', 'tier1']), active: true, cat4: subCategoryName },
-      ],
+      where: {
+        team: In([teamId, teamName]),
+        level: In(['Tier1', 'tier1']),
+        active: true,
+      },
       order: { id: 'ASC' },
     });
 
