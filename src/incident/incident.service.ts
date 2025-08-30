@@ -123,18 +123,63 @@ export class IncidentService {
           });
 
           if (availableTechnicians.length > 0) {
-            // Implement round-robin assignment
-            const teamKey = `${team}_${tier}_${subCategoryName}`; // More specific key
-            const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+            // Implement hybrid round-robin assignment with workload consideration
+            const teamKey = `${team}_${tier}_${subCategoryName}`; // More specific key for round-robin tracking
+            
+            if (availableTechnicians.length === 1) {
+              // If only one technician available, check their workload
+              const singleTech = availableTechnicians[0];
+              const activeWorkload = await this.incidentRepository.count({
+                where: { 
+                  handler: singleTech.serviceNum, 
+                  status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+                },
+              });
+              
+              // Only assign if technician has less than 3 active incidents
+              if (activeWorkload < 3) {
+                assignedTechnician = singleTech;
+                this.logger.log(`[ASSIGNMENT] Single technician available: ${singleTech.serviceNum} with workload ${activeWorkload}/3`);
+              } else {
+                this.logger.log(`[ASSIGNMENT] Single technician ${singleTech.serviceNum} at max capacity (${activeWorkload}/3)`);
+              }
+            } else {
+              // Multiple technicians available - use round-robin with workload filtering
+              const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+              let attemptCount = 0;
+              let selectedIndex = currentIndex;
+              
+              // Try round-robin starting from current index
+              while (attemptCount < availableTechnicians.length) {
+                const candidateTech = availableTechnicians[selectedIndex];
+                const activeWorkload = await this.incidentRepository.count({
+                  where: { 
+                    handler: candidateTech.serviceNum, 
+                    status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+                  },
+                });
+                
+                // Check if this technician has capacity
+                if (activeWorkload < 3) {
+                  assignedTechnician = candidateTech;
+                  // Update round-robin index for next assignment
+                  const nextIndex = (selectedIndex + 1) % availableTechnicians.length;
+                  this.teamAssignmentIndex.set(teamKey, nextIndex);
+                  this.logger.log(`[ASSIGNMENT] Round-robin assigned to technician ${candidateTech.serviceNum} with workload ${activeWorkload}/3 (index: ${selectedIndex})`);
+                  break;
+                }
+                
+                // Move to next technician in round-robin
+                selectedIndex = (selectedIndex + 1) % availableTechnicians.length;
+                attemptCount++;
+              }
+              
+              if (!assignedTechnician) {
+                this.logger.log(`[ASSIGNMENT] All ${availableTechnicians.length} technicians for team '${team}' are at max capacity (3 incidents each)`);
+              }
+            }
 
-            // Select the technician at current index
-            assignedTechnician = availableTechnicians[currentIndex];
-
-            // Update index for next assignment (wrap around to 0 if at end)
-            const nextIndex = (currentIndex + 1) % availableTechnicians.length;
-            this.teamAssignmentIndex.set(teamKey, nextIndex);
-
-            break;
+            if (assignedTechnician) break;
           }
         }
         if (assignedTechnician) break;
@@ -869,23 +914,59 @@ export class IncidentService {
       return false;
     }
 
-    // --- Enhanced Queue-based load balancing ---
-    // Find technician with least active workload (only OPEN and IN_PROGRESS incidents count)
+    // --- Enhanced Round-robin load balancing with workload consideration ---
     let selectedTechnician: Technician | null = null;
-    let minWorkload = Number.MAX_SAFE_INTEGER;
+    const teamKey = `${teamId}_Tier1_${subCategoryName}_pending`; // Unique key for pending assignments
     
-    for (const tech of availableTechnicians) {
+    if (availableTechnicians.length === 1) {
+      // Single technician - check workload only
+      const singleTech = availableTechnicians[0];
       const activeWorkload = await this.incidentRepository.count({
         where: { 
-          handler: tech.serviceNum, 
-          status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+          handler: singleTech.serviceNum, 
+          status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
         },
       });
       
-      // Only assign if technician has less than 3 active incidents
-      if (activeWorkload < 3 && activeWorkload < minWorkload) {
-        minWorkload = activeWorkload;
-        selectedTechnician = tech;
+      if (activeWorkload < 3) {
+        selectedTechnician = singleTech;
+        this.logger.log(`[PENDING-ASSIGNMENT] Single technician ${singleTech.serviceNum} available with workload ${activeWorkload}/3`);
+      } else {
+        this.logger.log(`[PENDING-ASSIGNMENT] Single technician ${singleTech.serviceNum} at max capacity (${activeWorkload}/3)`);
+      }
+    } else {
+      // Multiple technicians - use round-robin with workload filtering
+      const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+      let attemptCount = 0;
+      let selectedIndex = currentIndex;
+      
+      // Try round-robin starting from current index
+      while (attemptCount < availableTechnicians.length) {
+        const candidateTech = availableTechnicians[selectedIndex];
+        const activeWorkload = await this.incidentRepository.count({
+          where: { 
+            handler: candidateTech.serviceNum, 
+            status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+          },
+        });
+        
+        // Check if this technician has capacity
+        if (activeWorkload < 3) {
+          selectedTechnician = candidateTech;
+          // Update round-robin index for next assignment
+          const nextIndex = (selectedIndex + 1) % availableTechnicians.length;
+          this.teamAssignmentIndex.set(teamKey, nextIndex);
+          this.logger.log(`[PENDING-ASSIGNMENT] Round-robin assigned to technician ${candidateTech.serviceNum} with workload ${activeWorkload}/3 (index: ${selectedIndex})`);
+          break;
+        }
+        
+        // Move to next technician in round-robin
+        selectedIndex = (selectedIndex + 1) % availableTechnicians.length;
+        attemptCount++;
+      }
+      
+      if (!selectedTechnician) {
+        this.logger.log(`[PENDING-ASSIGNMENT] All ${availableTechnicians.length} technicians for team '${teamName}' are at max capacity (3 incidents each)`);
       }
     }
 
@@ -906,7 +987,7 @@ export class IncidentService {
     this.emitIncidentSocketEvents(incident, 'assigned');
 
     this.logger.log(
-      `Successfully assigned incident ${incident.incident_number} to technician ${selectedTechnician.serviceNum}. Current active workload: ${minWorkload + 1}/3`,
+      `Successfully assigned incident ${incident.incident_number} to technician ${selectedTechnician.serviceNum} via round-robin assignment.`,
     );
 
     return true;
@@ -944,7 +1025,7 @@ export class IncidentService {
     const currentActiveWorkload = await this.incidentRepository.count({
       where: { 
         handler: technicianServiceNum, 
-        status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+        status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
       },
     });
 
@@ -981,7 +1062,7 @@ export class IncidentService {
     
     this.logger.log(`[AUTO-ASSIGNMENT] No skill-matched pending incidents found in the team queue for technician ${technicianServiceNum}.`);
     
-    // Fallback logic from original code: try to find any pending incident.
+    // Fallback logic from original code: try to find any pending incident (oldest first).
     // We will retain this but add the skill check.
     const anyPendingIncident = await this.incidentRepository.findOne({
       where: { status: IncidentStatus.PENDING_ASSIGNMENT },
@@ -1043,7 +1124,7 @@ export class IncidentService {
     
     this.logger.log(`[AUTO-ASSIGNMENT] Looking for pending incidents in categories: ${categoryNames.join(', ')}`);
 
-    // Find pending incidents for these categories
+    // Find pending incidents for these categories, prioritizing oldest first
     const pendingIncidents = await this.incidentRepository
       .createQueryBuilder('incident')
       .where('incident.status = :status', { status: IncidentStatus.PENDING_ASSIGNMENT })
@@ -1051,10 +1132,10 @@ export class IncidentService {
         categoryNames,
         categoryCodes,
       })
-      .orderBy('incident.update_on', 'ASC') // Oldest first
+      .orderBy('incident.update_on', 'ASC') // Oldest first for priority
       .getMany();
 
-    this.logger.log(`[AUTO-ASSIGNMENT] Found ${pendingIncidents.length} pending incidents for technician's categories`);
+    this.logger.log(`[AUTO-ASSIGNMENT] Found ${pendingIncidents.length} pending incidents for technician's categories (ordered by update time)`);
     
     return pendingIncidents;
   }
@@ -1153,7 +1234,7 @@ export class IncidentService {
       const activeWorkload = await this.incidentRepository.count({
         where: { 
           handler: tech.serviceNum, 
-          status: In([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS])
+          status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
         },
       });
       
