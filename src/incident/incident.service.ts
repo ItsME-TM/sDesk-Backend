@@ -400,11 +400,19 @@ export class IncidentService {
 
         const mainCategoryId = categoryItem.subCategory?.mainCategory?.id;
         const teamName = categoryItem.subCategory?.mainCategory?.name;
+        const subCategoryName = categoryItem.subCategory?.name;
 
         if (!mainCategoryId && !teamName) {
           console.error(`[IncidentService] No team found for new category '${incidentDto.category}' for reassignment.`);
           throw new BadRequestException(
             `No team found for new category '${incidentDto.category}' for reassignment.`,
+          );
+        }
+
+        if (!subCategoryName) {
+          console.error(`[IncidentService] No sub-category found for new category '${incidentDto.category}' for reassignment.`);
+          throw new BadRequestException(
+            `No sub-category found for new category '${incidentDto.category}' for reassignment.`,
           );
         }
 
@@ -414,18 +422,74 @@ export class IncidentService {
 
         for (const team of teamIdentifiers) {
           for (const tier of tierVariants) {
+            // Find all active tier1 technicians for this team who are skilled in the sub-category
             const availableTechnicians = await this.technicianRepository.find({
-              where: {
-                team: team,
-                tier: tier,
-                active: true,
-              },
+              where: [
+                { team: team, tier: tier, active: true, cat1: subCategoryName },
+                { team: team, tier: tier, active: true, cat2: subCategoryName },
+                { team: team, tier: tier, active: true, cat3: subCategoryName },
+                { team: team, tier: tier, active: true, cat4: subCategoryName },
+              ],
               order: { id: 'ASC' },
             });
 
             if (availableTechnicians.length > 0) {
-              // Use enhanced selection logic
-              assignedTechnician = await this.selectBestTechnician(availableTechnicians);
+              // Implement hybrid round-robin assignment with workload consideration
+              const teamKey = `${team}_${tier}_${subCategoryName}_update`; // More specific key for round-robin tracking
+              
+              if (availableTechnicians.length === 1) {
+                // If only one technician available, check their workload
+                const singleTech = availableTechnicians[0];
+                const activeWorkload = await this.incidentRepository.count({
+                  where: { 
+                    handler: singleTech.serviceNum, 
+                    status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+                  },
+                });
+                
+                // Only assign if technician has less than 3 active incidents
+                if (activeWorkload < 3) {
+                  assignedTechnician = singleTech;
+                  this.logger.log(`[CATEGORY-CHANGE] Single technician available: ${singleTech.serviceNum} with workload ${activeWorkload}/3`);
+                } else {
+                  this.logger.log(`[CATEGORY-CHANGE] Single technician ${singleTech.serviceNum} at max capacity (${activeWorkload}/3)`);
+                }
+              } else {
+                // Multiple technicians available - use round-robin with workload filtering
+                const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+                let attemptCount = 0;
+                let selectedIndex = currentIndex;
+                
+                // Try round-robin starting from current index
+                while (attemptCount < availableTechnicians.length) {
+                  const candidateTech = availableTechnicians[selectedIndex];
+                  const activeWorkload = await this.incidentRepository.count({
+                    where: { 
+                      handler: candidateTech.serviceNum, 
+                      status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+                    },
+                  });
+                  
+                  // Check if this technician has capacity
+                  if (activeWorkload < 3) {
+                    assignedTechnician = candidateTech;
+                    // Update round-robin index for next assignment
+                    const nextIndex = (selectedIndex + 1) % availableTechnicians.length;
+                    this.teamAssignmentIndex.set(teamKey, nextIndex);
+                    this.logger.log(`[CATEGORY-CHANGE] Round-robin assigned to technician ${candidateTech.serviceNum} with workload ${activeWorkload}/3 (index: ${selectedIndex})`);
+                    break;
+                  }
+                  
+                  // Move to next technician in round-robin
+                  selectedIndex = (selectedIndex + 1) % availableTechnicians.length;
+                  attemptCount++;
+                }
+                
+                if (!assignedTechnician) {
+                  this.logger.log(`[CATEGORY-CHANGE] All ${availableTechnicians.length} technicians for team '${team}' are at max capacity (3 incidents each)`);
+                }
+              }
+
               if (assignedTechnician) break;
             }
           }
@@ -433,18 +497,22 @@ export class IncidentService {
         }
 
         if (!assignedTechnician) {
-          console.error(`[IncidentService] No active Tier1 technician found for team associated with new category '${incidentDto.category}'.`);
-          throw new BadRequestException(
-            `No active Tier1 technician found for team associated with new category '${incidentDto.category}'.`,
-          );
+          // No active technician found - set incident to pending assignment status
+          console.log(`[IncidentService] No active Tier1 technician found for team associated with new category '${incidentDto.category}'. Setting incident to pending assignment.`);
+          incidentDto.handler = null; // Clear handler since no one is assigned
+          incidentDto.status = IncidentStatus.PENDING_ASSIGNMENT; // Set to pending status
+          incidentDto.automaticallyAssignForTier2 = false;
+          incidentDto.assignForTeamAdmin = false;
+          
+          this.logger.log(`[CATEGORY-CHANGE-PENDING] Incident ${incident_number} set to pending assignment due to category change to '${incidentDto.category}' - no active technicians available`);
+        } else {
+          // Track the reassigned technician for socket events
+          reassignedTechnician = assignedTechnician;
+
+          incidentDto.handler = assignedTechnician.serviceNum;
+          incidentDto.automaticallyAssignForTier2 = false;
+          incidentDto.assignForTeamAdmin = false;
         }
-
-        // Track the reassigned technician for socket events
-        reassignedTechnician = assignedTechnician;
-
-        incidentDto.handler = assignedTechnician.serviceNum;
-        incidentDto.automaticallyAssignForTier2 = false;
-        incidentDto.assignForTeamAdmin = false;
       }
 
       // --- Auto-assign Tier2 technician if requested ---
@@ -563,7 +631,9 @@ export class IncidentService {
       const assignedToDisplayName = handlerIdentifier
         ? await this.getDisplayNameByServiceNum(handlerIdentifier)
         : incidentDto.status === IncidentStatus.PENDING_TIER2_ASSIGNMENT 
-          ? 'Pending Tier2 Assignment' 
+          ? 'Pending Tier2 Assignment'
+          : incidentDto.status === IncidentStatus.PENDING_ASSIGNMENT
+          ? 'Pending Assignment'
           : 'N/A';
       const updatedByDisplayName = await this.getDisplayNameByServiceNum(incidentDto.update_by || incident.update_by);
 
@@ -575,6 +645,8 @@ export class IncidentService {
       history.updatedBy = updatedByDisplayName;
       history.comments = incidentDto.status === IncidentStatus.PENDING_TIER2_ASSIGNMENT 
         ? 'Incident moved to Tier2 pending queue - no active Tier2 technicians available'
+        : incidentDto.status === IncidentStatus.PENDING_ASSIGNMENT
+        ? 'Incident moved to pending queue - no active technicians available for the new category'
         : incidentDto.description || incident.description || '';
       history.category = incidentDto.category || incident.category;
       history.location = incidentDto.location || incident.location;
