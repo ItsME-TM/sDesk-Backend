@@ -33,7 +33,6 @@ export class AuthService {
   constructor(
     private configService: ConfigService,
     private readonly sltUsersService: SLTUsersService,
-   
   ) {}
 
   private getStringFromDecoded(
@@ -152,6 +151,30 @@ export class AuthService {
             role: 'user',
             contactNumber,
           });
+        } else {
+          const updates: Partial<SLTUser> = {};
+          // check if name changed
+          if (name && user.display_name !== name) {
+            updates.display_name = name;
+          }
+          // check if contact number changed
+          if (contactNumber && contactNumber !== user.contactNumber) {
+            updates.contactNumber = contactNumber;
+          }
+          // chack if the email changed
+          if (email && email !== user.email) {
+            updates.email = email;
+          }
+          //Skip the update if no changes
+          if (Object.keys(updates).length > 0) {
+            const updated = await this.sltUsersService.updateUser(
+              azureId,
+              updates,
+            );
+            if (updated) {
+              user = updated;
+            }
+          }
         }
         if (!user) throw new UnauthorizedException('User creation failed');
         const { accessToken, refreshToken } = this.generateTokens(user);
