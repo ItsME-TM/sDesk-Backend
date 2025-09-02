@@ -17,10 +17,6 @@ describe('TeamAdminController', () => {
     contactNumber: 'TP001',
     designation: 'Senior Developer',
     email: 'john@example.com',
-    cat1: 'cat1',
-    cat2: 'cat2',
-    cat3: 'cat3',
-    cat4: 'cat4',
     active: true,
     assignAfterSignOff: false,
     teamId: 'team-123',
@@ -36,10 +32,6 @@ describe('TeamAdminController', () => {
     contactNumber: 'TP001',
     designation: 'Senior Developer',
     email: 'john@example.com',
-    cat1: 'cat1',
-    cat2: 'cat2',
-    cat3: 'cat3',
-    cat4: 'cat4',
     active: true,
     assignAfterSignOff: false,
     teamId: 'team-123',
@@ -89,9 +81,10 @@ describe('TeamAdminController', () => {
   describe('createTeamAdmin (Controller Method)', () => {
     it('should create a team admin successfully', async () => {
       mockTeamAdminService.createTeamAdmin.mockResolvedValue(mockTeamAdmin);
-      const result = await controller.createTeamAdmin(mockTeamAdminDto);
+      const result = await controller.createTeamAdmin('team-123', mockTeamAdminDto);
       expect(mockTeamAdminService.createTeamAdmin).toHaveBeenCalledWith(
         mockTeamAdminDto,
+        'team-123',
       );
       expect(result).toEqual(mockTeamAdmin);
     });
@@ -99,10 +92,10 @@ describe('TeamAdminController', () => {
       const error = new Error('Database error');
       mockTeamAdminService.createTeamAdmin.mockRejectedValue(error);
       await expect(
-        controller.createTeamAdmin(mockTeamAdminDto),
+        controller.createTeamAdmin('team-123', mockTeamAdminDto),
       ).rejects.toThrow(HttpException);
       try {
-        await controller.createTeamAdmin(mockTeamAdminDto);
+        await controller.createTeamAdmin('team-123', mockTeamAdminDto);
       } catch (e) {
         const err = e as any;
         expect(err.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
