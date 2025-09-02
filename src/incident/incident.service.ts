@@ -448,60 +448,84 @@ export class IncidentService {
             });
 
             if (availableTechnicians.length > 0) {
-              // Implement hybrid round-robin assignment with workload consideration
-              const teamKey = `${team}_${tier}_${subCategoryName}_update`; // More specific key for round-robin tracking
+              // Create a temporary incident object for skill checking with new category
+              const tempIncident = { category: incidentDto.category } as Incident;
               
-              if (availableTechnicians.length === 1) {
-                // If only one technician available, check their workload
-                const singleTech = availableTechnicians[0];
-                const activeWorkload = await this.incidentRepository.count({
-                  where: { 
-                    handler: singleTech.serviceNum, 
-                    status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
-                  },
-                });
-                
-                // Only assign if technician has less than 3 active incidents
-                if (activeWorkload < 3) {
-                  assignedTechnician = singleTech;
-                  this.logger.log(`[CATEGORY-CHANGE] Single technician available: ${singleTech.serviceNum} with workload ${activeWorkload}/3`);
+              // Filter technicians based on sub-category skills first
+              const skilledTechnicians: Technician[] = [];
+              
+              this.logger.log(`[CATEGORY-CHANGE-SKILL] Checking skills for ${availableTechnicians.length} technicians for sub-category '${subCategoryName}' (new category: ${incidentDto.category})`);
+              
+              for (const tech of availableTechnicians) {
+                const isSkilled = await this.isTechnicianSkilledForIncident(tech, tempIncident);
+                if (isSkilled) {
+                  skilledTechnicians.push(tech);
+                  this.logger.log(`[CATEGORY-CHANGE-SKILL] Technician ${tech.serviceNum} is skilled for sub-category '${subCategoryName}'`);
                 } else {
-                  this.logger.log(`[CATEGORY-CHANGE] Single technician ${singleTech.serviceNum} at max capacity (${activeWorkload}/3)`);
+                  this.logger.log(`[CATEGORY-CHANGE-SKILL] Technician ${tech.serviceNum} is NOT skilled for sub-category '${subCategoryName}'`);
                 }
-              } else {
-                // Multiple technicians available - use round-robin with workload filtering
-                const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
-                let attemptCount = 0;
-                let selectedIndex = currentIndex;
+              }
+              
+              this.logger.log(`[CATEGORY-CHANGE-SKILL] Found ${skilledTechnicians.length} skilled technicians out of ${availableTechnicians.length} available for sub-category '${subCategoryName}'`);
+              
+              if (skilledTechnicians.length > 0) {
+                // Implement hybrid round-robin assignment with workload consideration on skilled technicians
+                const teamKey = `${team}_${tier}_${subCategoryName}_update`; // More specific key for round-robin tracking
                 
-                // Try round-robin starting from current index
-                while (attemptCount < availableTechnicians.length) {
-                  const candidateTech = availableTechnicians[selectedIndex];
+                if (skilledTechnicians.length === 1) {
+                  // If only one skilled technician available, check their workload
+                  const singleTech = skilledTechnicians[0];
                   const activeWorkload = await this.incidentRepository.count({
                     where: { 
-                      handler: candidateTech.serviceNum, 
+                      handler: singleTech.serviceNum, 
                       status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
                     },
                   });
                   
-                  // Check if this technician has capacity
+                  // Only assign if technician has less than 3 active incidents
                   if (activeWorkload < 3) {
-                    assignedTechnician = candidateTech;
-                    // Update round-robin index for next assignment
-                    const nextIndex = (selectedIndex + 1) % availableTechnicians.length;
-                    this.teamAssignmentIndex.set(teamKey, nextIndex);
-                    this.logger.log(`[CATEGORY-CHANGE] Round-robin assigned to technician ${candidateTech.serviceNum} with workload ${activeWorkload}/3 (index: ${selectedIndex})`);
-                    break;
+                    assignedTechnician = singleTech;
+                    this.logger.log(`[CATEGORY-CHANGE-SKILL] Single skilled technician available: ${singleTech.serviceNum} with workload ${activeWorkload}/3`);
+                  } else {
+                    this.logger.log(`[CATEGORY-CHANGE-SKILL] Single skilled technician ${singleTech.serviceNum} at max capacity (${activeWorkload}/3)`);
+                  }
+                } else {
+                  // Multiple skilled technicians available - use round-robin with workload filtering
+                  const currentIndex = this.teamAssignmentIndex.get(teamKey) || 0;
+                  let attemptCount = 0;
+                  let selectedIndex = currentIndex;
+                  
+                  // Try round-robin starting from current index
+                  while (attemptCount < skilledTechnicians.length) {
+                    const candidateTech = skilledTechnicians[selectedIndex];
+                    const activeWorkload = await this.incidentRepository.count({
+                      where: { 
+                        handler: candidateTech.serviceNum, 
+                        status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+                      },
+                    });
+                    
+                    // Check if this technician has capacity
+                    if (activeWorkload < 3) {
+                      assignedTechnician = candidateTech;
+                      // Update round-robin index for next assignment
+                      const nextIndex = (selectedIndex + 1) % skilledTechnicians.length;
+                      this.teamAssignmentIndex.set(teamKey, nextIndex);
+                      this.logger.log(`[CATEGORY-CHANGE-SKILL] Round-robin assigned to skilled technician ${candidateTech.serviceNum} with workload ${activeWorkload}/3 (index: ${selectedIndex})`);
+                      break;
+                    }
+                    
+                    // Move to next technician in round-robin
+                    selectedIndex = (selectedIndex + 1) % skilledTechnicians.length;
+                    attemptCount++;
                   }
                   
-                  // Move to next technician in round-robin
-                  selectedIndex = (selectedIndex + 1) % availableTechnicians.length;
-                  attemptCount++;
+                  if (!assignedTechnician) {
+                    this.logger.log(`[CATEGORY-CHANGE-SKILL] All ${skilledTechnicians.length} skilled technicians for sub-category '${subCategoryName}' are at max capacity (3 incidents each)`);
+                  }
                 }
-                
-                if (!assignedTechnician) {
-                  this.logger.log(`[CATEGORY-CHANGE] All ${availableTechnicians.length} technicians for team '${team}' are at max capacity (3 incidents each)`);
-                }
+              } else {
+                this.logger.log(`[CATEGORY-CHANGE-SKILL] No skilled technicians found for sub-category '${subCategoryName}' in team '${team}'`);
               }
 
               if (assignedTechnician) break;
@@ -638,6 +662,75 @@ export class IncidentService {
         // Assign the incident to the team admin
         incidentDto.handler = teamAdmin.serviceNumber;
  
+      }
+
+      // --- Manual Handler Assignment Validation ---
+      // Check if admin is manually assigning to a different handler (not through automatic assignment)
+      const isManualHandlerAssignment = incidentDto.handler && 
+                                       incidentDto.handler !== originalHandler && 
+                                       !incidentDto.automaticallyAssignForTier2 && 
+                                       !incidentDto.assignForTeamAdmin &&
+                                       !categoryChanged; // Not a category-based reassignment
+
+      if (isManualHandlerAssignment) {
+        this.logger.log(`[MANUAL-ASSIGNMENT] Admin is manually assigning incident ${incident_number} to handler ${incidentDto.handler}`);
+        
+        // Ensure handler is not null/undefined
+        if (!incidentDto.handler) {
+          throw new BadRequestException('Handler is required for manual assignment');
+        }
+        
+        // Get the technician being assigned to
+        const targetTechnician = await this.technicianRepository.findOne({
+          where: { serviceNum: incidentDto.handler, active: true },
+        });
+
+        if (!targetTechnician) {
+          throw new BadRequestException(
+            `Target technician ${incidentDto.handler} not found or not active`
+          );
+        }
+
+        // Check if the technician is skilled for the incident's category/sub-category
+        const currentCategory = incidentDto.category || incident.category;
+        const tempIncident = { category: currentCategory } as Incident;
+        
+        const isSkilled = await this.isTechnicianSkilledForIncident(targetTechnician, tempIncident);
+        
+        if (!isSkilled) {
+          // Get category hierarchy for error message
+          const categoryItem = await this.categoryItemRepository.findOne({
+            where: { name: currentCategory },
+            relations: ['subCategory', 'subCategory.mainCategory'],
+          });
+          
+          const subCategoryName = categoryItem?.subCategory?.name || 'Unknown';
+          const mainCategoryName = categoryItem?.subCategory?.mainCategory?.name || 'Unknown';
+          
+          this.logger.warn(`[MANUAL-ASSIGNMENT] Technician ${incidentDto.handler} is not skilled for category '${currentCategory}' (sub-category: ${subCategoryName})`);
+          
+          throw new BadRequestException(
+            `Technician ${targetTechnician.name} (${incidentDto.handler}) is not skilled to handle incidents in sub-category '${subCategoryName}' (Category: ${currentCategory}, Team: ${mainCategoryName}). Please assign to a technician with appropriate skills.`
+          );
+        }
+
+        // Check workload capacity
+        const activeWorkload = await this.incidentRepository.count({
+          where: { 
+            handler: targetTechnician.serviceNum, 
+            status: In([IncidentStatus.OPEN, IncidentStatus.HOLD, IncidentStatus.IN_PROGRESS])
+          },
+        });
+
+        if (activeWorkload >= 3) {
+          this.logger.warn(`[MANUAL-ASSIGNMENT] Technician ${incidentDto.handler} is at max capacity (${activeWorkload}/3)`);
+          
+          throw new BadRequestException(
+            `Technician ${targetTechnician.name} (${incidentDto.handler}) is already at maximum capacity (${activeWorkload}/3 active incidents). Please assign to a technician with available capacity.`
+          );
+        }
+
+        this.logger.log(`[MANUAL-ASSIGNMENT] Validation passed - Technician ${targetTechnician.serviceNum} is skilled and has capacity (${activeWorkload}/3)`);
       }
 
       // Get display names for incident history
