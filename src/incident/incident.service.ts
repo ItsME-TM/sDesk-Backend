@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   BadRequestException,
@@ -1382,14 +1383,41 @@ export class IncidentService {
       };
     }
 
-    // Apply workload-based round-robin selection
+    // Filter candidates based on skills for the incident category
+    const skilledCandidates: Technician[] = [];
+    
+    // Create a temporary incident object to check skills
+    const tempIncident = { category } as Incident;
+    
+    this.logger.log(`[SKILL-CHECK] Checking skills for ${uniqueCandidates.length} Tier2 candidates for category '${category}'`);
+    
+    for (const candidate of uniqueCandidates) {
+      const isSkilled = await this.isTechnicianSkilledForIncident(candidate, tempIncident);
+      if (isSkilled) {
+        skilledCandidates.push(candidate);
+        this.logger.log(`[SKILL-CHECK] Technician ${candidate.serviceNum} is skilled for category '${category}'`);
+      } else {
+        this.logger.log(`[SKILL-CHECK] Technician ${candidate.serviceNum} is NOT skilled for category '${category}'`);
+      }
+    }
+    
+    this.logger.log(`[SKILL-CHECK] Found ${skilledCandidates.length} skilled Tier2 technicians out of ${uniqueCandidates.length} candidates`);
+    
+    if (skilledCandidates.length === 0) {
+      return { 
+        success: false, 
+        message: `No skilled Tier2 technician found for team '${mainCategoryId || teamName}' with category '${category}'` 
+      };
+    } 
+
+    // Apply workload-based round-robin selection on skilled candidates
     const teamKey = `${mainCategoryId || teamName}_Tier2`;
-    tier2Tech = await this.selectTier2TechnicianWithRoundRobin(uniqueCandidates, teamKey);
+    tier2Tech = await this.selectTier2TechnicianWithRoundRobin(skilledCandidates, teamKey);
 
     if (!tier2Tech) {
       return { 
         success: false, 
-        message: `All Tier2 technicians for team '${mainCategoryId || teamName}' are at max capacity (3 incidents each)` 
+        message: `All skilled Tier2 technicians for team '${mainCategoryId || teamName}' are at max capacity (3 incidents each)` 
       };
     }
 
