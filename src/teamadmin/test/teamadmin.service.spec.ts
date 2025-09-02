@@ -23,10 +23,6 @@ describe('TeamAdminService', () => {
     contactNumber: 'TP001',
     designation: 'Senior Developer',
     email: 'john@example.com',
-    cat1: 'cat1',
-    cat2: 'cat2',
-    cat3: 'cat3',
-    cat4: 'cat4',
     active: true,
     assignAfterSignOff: false,
     teamId: 'team-123',
@@ -42,10 +38,6 @@ describe('TeamAdminService', () => {
     contactNumber: 'TP001',
     designation: 'Senior Developer',
     email: 'john@example.com',
-    cat1: 'cat1',
-    cat2: 'cat2',
-    cat3: 'cat3',
-    cat4: 'cat4',
     active: true,
     assignAfterSignOff: false,
     teamId: 'team-123',
@@ -99,8 +91,11 @@ describe('TeamAdminService', () => {
     it('should create a team admin successfully', async () => {
       mockRepository.create.mockReturnValue(mockTeamAdmin);
       mockRepository.save.mockResolvedValue(mockTeamAdmin);
-      const result = await service.createTeamAdmin(mockTeamAdminDto);
-      expect(mockRepository.create).toHaveBeenCalledWith(mockTeamAdminDto);
+      const result = await service.createTeamAdmin(mockTeamAdminDto, 'team-123');
+      expect(mockRepository.create).toHaveBeenCalledWith({
+        ...mockTeamAdminDto,
+        teamId: 'team-123',
+      });
       expect(mockRepository.save).toHaveBeenCalledWith(mockTeamAdmin);
       expect(result).toEqual(mockTeamAdmin);
     });
@@ -110,10 +105,10 @@ describe('TeamAdminService', () => {
       mockRepository.create.mockReturnValue(mockTeamAdmin);
       mockRepository.save.mockRejectedValue(originalError);
 
-      await expect(service.createTeamAdmin(mockTeamAdminDto)).rejects.toThrow(
+      await expect(service.createTeamAdmin(mockTeamAdminDto, 'team-123')).rejects.toThrow(
         InternalServerErrorException,
       );
-      await expect(service.createTeamAdmin(mockTeamAdminDto)).rejects.toThrow(
+      await expect(service.createTeamAdmin(mockTeamAdminDto, 'team-123')).rejects.toThrow(
         `Failed to create team admin: ${originalError.message}`,
       );
     });

@@ -28,18 +28,6 @@ export class TeamAdmin {
   @Column()
   email!: string;
 
-  @Column({ nullable: true })
-  cat1!: string;
-
-  @Column({ nullable: true })
-  cat2!: string;
-
-  @Column({ nullable: true })
-  cat3!: string;
-
-  @Column({ nullable: true })
-  cat4!: string;
-
   @Column({ default: true })
   active!: boolean; // true = Signed In, false = Signed Off
 
