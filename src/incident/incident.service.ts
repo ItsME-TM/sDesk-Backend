@@ -974,7 +974,7 @@ export class IncidentService {
     });
   }
 
-  // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
+  // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ---------------------- //
 
   @Cron('0 0 * * *') // Daily at midnight (00:00)
   async handlePendingAssignments(): Promise<number> {
