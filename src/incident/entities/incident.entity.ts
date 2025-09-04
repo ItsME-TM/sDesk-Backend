@@ -7,6 +7,7 @@ export enum IncidentStatus {
   HOLD = 'Hold',
   CLOSED = 'Closed',
   PENDING_ASSIGNMENT = 'Pending Assignment',
+  PENDING_TIER2_ASSIGNMENT = 'Pending Tier2 Assignment',
 }
 
 export enum IncidentPriority {
