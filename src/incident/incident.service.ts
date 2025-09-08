@@ -611,40 +611,33 @@ export class IncidentService {
 
   async getDashboardStats(params?: {
     userType?: string;
-    technicianId?: string;
+    technicianServiceNum?: string;
     teamName?: string;
     adminServiceNum?: string;
   }): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
 
-      const { userType, technicianId, adminServiceNum } = params || {};
+      const { userType, technicianServiceNum, adminServiceNum } = params || {};
 
       let filteredIncidents = incidents;
 
-      // Handle technician filtering - show only incidents assigned to this technician
-      if (userType?.toLowerCase() === 'technician' && technicianId) {
-        filteredIncidents = incidents.filter(incident => 
-          incident.handler === technicianId
-        );
+      // Handle technician filtering - use getAssignedToMe method
+      if (userType?.toLowerCase() === 'technician' && technicianServiceNum) {
+        filteredIncidents = await this.getAssignedToMe(technicianServiceNum);
       }
       // Handle admin filtering based on main category and subcategories
       else if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
        
-        
         // Get admin's assigned categories
         const teamAdmin = await this.teamAdminRepository.findOne({
           where: { serviceNumber: adminServiceNum },
         });
 
-       
-
         if (teamAdmin) {
           // Get all category items that belong to admin's main category (teamName) or subcategories (cat1-cat4)
           const adminCategories = [teamAdmin.teamName, teamAdmin.cat1, teamAdmin.cat2, teamAdmin.cat3, teamAdmin.cat4]
             .filter(cat => cat && cat.trim() !== '');
-
-          
 
           // Get all category items that fall under these categories
           const categoryItems = await this.categoryItemRepository
