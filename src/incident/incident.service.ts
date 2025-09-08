@@ -927,6 +927,7 @@ export class IncidentService {
         'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
         'In Progress': filteredIncidents.filter(inc => inc.status === 'In Progress').length,
         'Closed': filteredIncidents.filter(inc => inc.status === 'Closed').length,
+        'Pending Assignment': filteredIncidents.filter(inc => inc.status === 'Pending Assignment').length,
       };
 
       const priorityCounts = {
@@ -937,7 +938,10 @@ export class IncidentService {
 
       const todayStats = {
         'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
+        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
+        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
         'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Pending Assignment (Today)': filteredIncidents.filter(inc => inc.status === 'Pending Assignment' && inc.update_on === today).length,
       };
 
       // Also include overall counts for comparison
@@ -946,8 +950,12 @@ export class IncidentService {
         'Hold': incidents.filter(inc => inc.status === 'Hold').length,
         'In Progress': incidents.filter(inc => inc.status === 'In Progress').length,
         'Closed': incidents.filter(inc => inc.status === 'Closed').length,
+        'Pending Assignment': incidents.filter(inc => inc.status === 'Pending Assignment').length,
         'Open (Today)': incidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
+        'Hold (Today)': incidents.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
+        'In Progress (Today)': incidents.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
         'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Pending Assignment (Today)': incidents.filter(inc => inc.status === 'Pending Assignment' && inc.update_on === today).length,
       };
 
       return {
