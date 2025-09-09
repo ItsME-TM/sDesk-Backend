@@ -674,6 +674,24 @@ export class IncidentService {
 
       const today = new Date().toISOString().split('T')[0];
 
+      // Helper function to check if an incident's update_on matches today
+      const isTodayIncident = (incident: Incident) => {
+        if (!incident.update_on) return false;
+        
+        // Handle different date formats
+        let incidentDate: string = incident.update_on;
+        if (typeof incidentDate === 'string') {
+          // If it contains timestamp, extract date part
+          if (incidentDate.includes('T')) {
+            incidentDate = incidentDate.split('T')[0];
+          }
+        }
+        
+        return incidentDate === today;
+      };
+
+
+
       const statusCounts = {
         'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
         'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
@@ -689,11 +707,11 @@ export class IncidentService {
       };
 
       const todayStats = {
-        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
-        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
-        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
-        'Pending Assignment (Today)': filteredIncidents.filter(inc => inc.status === 'Pending Assignment' && inc.update_on === today).length,
+        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && isTodayIncident(inc)).length,
+        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && isTodayIncident(inc)).length,
+        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && isTodayIncident(inc)).length,
+        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && isTodayIncident(inc)).length,
+        'Pending Assignment (Today)': filteredIncidents.filter(inc => inc.status === 'Pending Assignment' && isTodayIncident(inc)).length,
       };
 
       // Also include overall counts for comparison
@@ -703,11 +721,11 @@ export class IncidentService {
         'In Progress': incidents.filter(inc => inc.status === 'In Progress').length,
         'Closed': incidents.filter(inc => inc.status === 'Closed').length,
         'Pending Assignment': incidents.filter(inc => inc.status === 'Pending Assignment').length,
-        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Hold (Today)': incidents.filter(inc => inc.status === 'Hold' && inc.update_on === today).length,
-        'In Progress (Today)': incidents.filter(inc => inc.status === 'In Progress' && inc.update_on === today).length,
-        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
-        'Pending Assignment (Today)': incidents.filter(inc => inc.status === 'Pending Assignment' && inc.update_on === today).length,
+        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && isTodayIncident(inc)).length,
+        'Hold (Today)': incidents.filter(inc => inc.status === 'Hold' && isTodayIncident(inc)).length,
+        'In Progress (Today)': incidents.filter(inc => inc.status === 'In Progress' && isTodayIncident(inc)).length,
+        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && isTodayIncident(inc)).length,
+        'Pending Assignment (Today)': incidents.filter(inc => inc.status === 'Pending Assignment' && isTodayIncident(inc)).length,
       };
 
       return {
