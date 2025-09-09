@@ -868,6 +868,23 @@ export class IncidentService {
         filteredIncidents = await this.getAssignedToMe(technicianServiceNum);
       }
 
+      // Handle admin filtering - filter incidents by admin's assigned team (main category)
+      if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
+        // Find the admin's team information from TeamAdmin table
+        const teamAdmin = await this.teamAdminRepository.findOne({
+          where: { serviceNumber: adminServiceNum }
+        });
+
+        if (teamAdmin && teamAdmin.teamId) {
+          // Use the teamId directly as it contains the main category code
+          filteredIncidents = await this.getIncidentsByMainCategoryCode(teamAdmin.teamId);
+          this.logger.log(`[ADMIN-DASHBOARD] Filtered ${filteredIncidents.length} incidents for admin ${adminServiceNum} (team: ${teamAdmin.teamName}, code: ${teamAdmin.teamId})`);
+        } else {
+          this.logger.warn(`[ADMIN-DASHBOARD] No team admin found for service number: ${adminServiceNum}`);
+          filteredIncidents = []; // No incidents if admin not found
+        }
+      }
+
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -1714,6 +1731,47 @@ export class IncidentService {
     );
 
     return true;
+  }
+
+  async getIncidentsByMainCategoryCode(mainCategoryCode: string): Promise<Incident[]> {
+    try {
+      // First, find all category items that belong to the main category
+      const categoryItems = await this.categoryItemRepository.find({
+        relations: ['subCategory', 'subCategory.mainCategory'],
+        where: {
+          subCategory: {
+            mainCategory: {
+              category_code: mainCategoryCode
+            }
+          }
+        }
+      });
+
+      if (categoryItems.length === 0) {
+        throw new NotFoundException(
+          `No category items found for main category code: ${mainCategoryCode}`
+        );
+      }
+
+      // Extract category item names for filtering incidents
+      const categoryItemNames = categoryItems.map(item => item.name);
+
+      // Find all incidents that match these category names
+      const incidents = await this.incidentRepository.find({
+        where: categoryItemNames.map(categoryName => ({ category: categoryName })),
+        order: { update_on: 'DESC' }
+      });
+
+      return incidents;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(
+        `Failed to retrieve incidents by main category code: ${message}`
+      );
+    }
   }
 
 }

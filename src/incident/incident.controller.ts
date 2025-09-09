@@ -653,4 +653,20 @@ export class IncidentController {
       throw new BadRequestException('Failed to download file');
     }
   }
+
+  @Get('by-main-category/:mainCategoryCode')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async getIncidentsByMainCategoryCode(
+    @Param('mainCategoryCode') mainCategoryCode: string,
+  ): Promise<Incident[]> {
+    try {
+      return await this.incidentService.getIncidentsByMainCategoryCode(mainCategoryCode);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to fetch incidents by main category');
+    }
+  }
 }
