@@ -28,22 +28,6 @@ export class TeamAdminDto {
   email!: string;
 
   @IsOptional()
-  @IsString()
-  cat1?: string;
-
-  @IsOptional()
-  @IsString()
-  cat2?: string;
-
-  @IsOptional()
-  @IsString()
-  cat3?: string;
-
-  @IsOptional()
-  @IsString()
-  cat4?: string;
-
-  @IsOptional()
   @IsBoolean()
   active?: boolean;
 

@@ -9,7 +9,8 @@ export class IncidentDto {
   location!: string;
 
   @IsString()
-  handler!: string;
+  @IsOptional()
+  handler?: string | null;
 
   @IsString()
   @IsOptional()
