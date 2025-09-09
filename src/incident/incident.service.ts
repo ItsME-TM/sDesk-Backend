@@ -626,51 +626,7 @@ export class IncidentService {
       if (userType?.toLowerCase() === 'technician' && technicianServiceNum) {
         filteredIncidents = await this.getAssignedToMe(technicianServiceNum);
       }
-      // Handle admin filtering based on main category and subcategories
-      else if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
-       
-        // Get admin's assigned categories
-        const teamAdmin = await this.teamAdminRepository.findOne({
-          where: { serviceNumber: adminServiceNum },
-        });
 
-        if (teamAdmin) {
-          // Get all category items that belong to admin's main category (teamName) or subcategories (cat1-cat4)
-          const adminCategories = [teamAdmin.teamName, teamAdmin.cat1, teamAdmin.cat2, teamAdmin.cat3, teamAdmin.cat4]
-            .filter(cat => cat && cat.trim() !== '');
-
-          // Get all category items that fall under these categories
-          const categoryItems = await this.categoryItemRepository
-            .createQueryBuilder('categoryItem')
-            .leftJoinAndSelect('categoryItem.subCategory', 'subCategory')
-            .leftJoinAndSelect('subCategory.mainCategory', 'mainCategory')
-            .where(
-              'mainCategory.name IN (:...mainCategories) OR subCategory.name IN (:...subCategories)',
-              {
-                mainCategories: adminCategories,
-                subCategories: adminCategories,
-              }
-            )
-            .getMany();
-
-        
-          // Get both category codes and names for filtering
-          const categoryItemCodes = categoryItems.map(item => item.category_code);
-          const categoryItemNames = categoryItems.map(item => item.name);
-
-         
-
-          // Filter incidents by category items (check both code and name fields)
-          filteredIncidents = incidents.filter(incident => 
-            incident.category && (
-              categoryItemCodes.includes(incident.category) ||
-              categoryItemNames.includes(incident.category)
-            )
-          );
-
-         
-        }
-      }
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -751,6 +707,8 @@ export class IncidentService {
       order: { updatedOn: 'ASC' },
     });
   }
+
+
 
   // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
 
@@ -853,4 +811,6 @@ export class IncidentService {
 
     return true;
   }
+
+
 }

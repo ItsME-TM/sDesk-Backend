@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable no-empty */
-/* eslint-disable @typescript-eslint/no-require-imports */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable no-useless-catch */
 import {
   Controller,
   Post,
@@ -235,6 +229,8 @@ export class IncidentController {
       throw error;
     }
   }
+
+
 
   @Get('view-team-incidents/:teamId')
   @UseGuards(JwtAuthGuard, RolesGuard)
