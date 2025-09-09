@@ -220,14 +220,14 @@ export class IncidentController {
   @Get('dashboard-stats')
   async getDashboardStats(
     @Query('userType') userType?: string,
-    @Query('technicianId') technicianId?: string,
+    @Query('technicianServiceNum') technicianServiceNum?: string,
     @Query('teamName') teamName?: string,
     @Query('adminServiceNum') adminServiceNum?: string,
   ): Promise<any> {
     try {
       return await this.incidentService.getDashboardStats({
         userType,
-        technicianId,
+        technicianServiceNum,
         teamName,
         adminServiceNum,
       });
