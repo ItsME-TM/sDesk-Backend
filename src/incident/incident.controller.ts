@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable no-empty */
-/* eslint-disable @typescript-eslint/no-require-imports */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable no-useless-catch */
 import {
   Controller,
   Post,
@@ -235,6 +229,8 @@ export class IncidentController {
       throw error;
     }
   }
+
+
 
   @Get('view-team-incidents/:teamId')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -655,6 +651,22 @@ export class IncidentController {
       res.sendFile(filePath);
     } catch (error) {
       throw new BadRequestException('Failed to download file');
+    }
+  }
+
+  @Get('by-main-category/:mainCategoryCode')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('user', 'admin', 'technician', 'teamLeader', 'superAdmin')
+  async getIncidentsByMainCategoryCode(
+    @Param('mainCategoryCode') mainCategoryCode: string,
+  ): Promise<Incident[]> {
+    try {
+      return await this.incidentService.getIncidentsByMainCategoryCode(mainCategoryCode);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to fetch incidents by main category');
     }
   }
 }
