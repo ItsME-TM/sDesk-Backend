@@ -852,81 +852,66 @@ export class IncidentService {
 
   async getDashboardStats(params?: {
     userType?: string;
-    technicianId?: string;
+    technicianServiceNum?: string;
     teamName?: string;
     adminServiceNum?: string;
   }): Promise<any> {
     try {
       const incidents = await this.incidentRepository.find();
 
-      const { userType, technicianId, adminServiceNum } = params || {};
+      const { userType, technicianServiceNum, adminServiceNum } = params || {};
 
       let filteredIncidents = incidents;
 
-      // Handle technician filtering - show only incidents assigned to this technician
-      if (userType?.toLowerCase() === 'technician' && technicianId) {
-        filteredIncidents = incidents.filter(incident => 
-          incident.handler === technicianId
-        );
+      // Handle technician filtering - use getAssignedToMe method
+      if (userType?.toLowerCase() === 'technician' && technicianServiceNum) {
+        filteredIncidents = await this.getAssignedToMe(technicianServiceNum);
       }
-      // Handle admin filtering based on main category and subcategories
-      else if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
-       
-        
-        // Get admin's assigned categories
+
+      // Handle admin filtering - filter incidents by admin's assigned team (main category)
+      if (userType?.toLowerCase() === 'admin' && adminServiceNum) {
+        // Find the admin's team information from TeamAdmin table
         const teamAdmin = await this.teamAdminRepository.findOne({
-          where: { serviceNumber: adminServiceNum },
+          where: { serviceNumber: adminServiceNum }
         });
 
-       
-
-        if (teamAdmin) {
-          // Get all category items that belong to admin's main category (teamName)
-          const adminCategories = [teamAdmin.teamName]
-            .filter(cat => cat && cat.trim() !== '');
-
-          
-
-          // Get all category items that fall under these categories
-          const categoryItems = await this.categoryItemRepository
-            .createQueryBuilder('categoryItem')
-            .leftJoinAndSelect('categoryItem.subCategory', 'subCategory')
-            .leftJoinAndSelect('subCategory.mainCategory', 'mainCategory')
-            .where(
-              'mainCategory.name IN (:...mainCategories) OR subCategory.name IN (:...subCategories)',
-              {
-                mainCategories: adminCategories,
-                subCategories: adminCategories,
-              }
-            )
-            .getMany();
-
-        
-          // Get both category codes and names for filtering
-          const categoryItemCodes = categoryItems.map(item => item.category_code);
-          const categoryItemNames = categoryItems.map(item => item.name);
-
-         
-
-          // Filter incidents by category items (check both code and name fields)
-          filteredIncidents = incidents.filter(incident => 
-            incident.category && (
-              categoryItemCodes.includes(incident.category) ||
-              categoryItemNames.includes(incident.category)
-            )
-          );
-
-         
+        if (teamAdmin && teamAdmin.teamId) {
+          // Use the teamId directly as it contains the main category code
+          filteredIncidents = await this.getIncidentsByMainCategoryCode(teamAdmin.teamId);
+          this.logger.log(`[ADMIN-DASHBOARD] Filtered ${filteredIncidents.length} incidents for admin ${adminServiceNum} (team: ${teamAdmin.teamName}, code: ${teamAdmin.teamId})`);
+        } else {
+          this.logger.warn(`[ADMIN-DASHBOARD] No team admin found for service number: ${adminServiceNum}`);
+          filteredIncidents = []; // No incidents if admin not found
         }
       }
 
+
       const today = new Date().toISOString().split('T')[0];
+
+      // Helper function to check if an incident's update_on matches today
+      const isTodayIncident = (incident: Incident) => {
+        if (!incident.update_on) return false;
+        
+        // Handle different date formats
+        let incidentDate: string = incident.update_on;
+        if (typeof incidentDate === 'string') {
+          // If it contains timestamp, extract date part
+          if (incidentDate.includes('T')) {
+            incidentDate = incidentDate.split('T')[0];
+          }
+        }
+        
+        return incidentDate === today;
+      };
+
+
 
       const statusCounts = {
         'Open': filteredIncidents.filter(inc => inc.status === 'Open').length,
         'Hold': filteredIncidents.filter(inc => inc.status === 'Hold').length,
         'In Progress': filteredIncidents.filter(inc => inc.status === 'In Progress').length,
         'Closed': filteredIncidents.filter(inc => inc.status === 'Closed').length,
+        'Pending Assignment': filteredIncidents.filter(inc => inc.status === 'Pending Assignment').length,
       };
 
       const priorityCounts = {
@@ -936,8 +921,11 @@ export class IncidentService {
       };
 
       const todayStats = {
-        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Open (Today)': filteredIncidents.filter(inc => inc.status === 'Open' && isTodayIncident(inc)).length,
+        'Hold (Today)': filteredIncidents.filter(inc => inc.status === 'Hold' && isTodayIncident(inc)).length,
+        'In Progress (Today)': filteredIncidents.filter(inc => inc.status === 'In Progress' && isTodayIncident(inc)).length,
+        'Closed (Today)': filteredIncidents.filter(inc => inc.status === 'Closed' && isTodayIncident(inc)).length,
+        'Pending Assignment (Today)': filteredIncidents.filter(inc => inc.status === 'Pending Assignment' && isTodayIncident(inc)).length,
       };
 
       // Also include overall counts for comparison
@@ -946,8 +934,12 @@ export class IncidentService {
         'Hold': incidents.filter(inc => inc.status === 'Hold').length,
         'In Progress': incidents.filter(inc => inc.status === 'In Progress').length,
         'Closed': incidents.filter(inc => inc.status === 'Closed').length,
-        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && inc.update_on === today).length,
-        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && inc.update_on === today).length,
+        'Pending Assignment': incidents.filter(inc => inc.status === 'Pending Assignment').length,
+        'Open (Today)': incidents.filter(inc => inc.status === 'Open' && isTodayIncident(inc)).length,
+        'Hold (Today)': incidents.filter(inc => inc.status === 'Hold' && isTodayIncident(inc)).length,
+        'In Progress (Today)': incidents.filter(inc => inc.status === 'In Progress' && isTodayIncident(inc)).length,
+        'Closed (Today)': incidents.filter(inc => inc.status === 'Closed' && isTodayIncident(inc)).length,
+        'Pending Assignment (Today)': incidents.filter(inc => inc.status === 'Pending Assignment' && isTodayIncident(inc)).length,
       };
 
       return {
@@ -974,7 +966,10 @@ export class IncidentService {
     });
   }
 
+
+
   // ------------------- SCHEDULER FOR PENDING ASSIGNMENTS ------------------- //
+
 
   @Cron('0 0 * * *') // Daily at midnight (00:00)
   async handlePendingAssignments(): Promise<number> {
@@ -1737,5 +1732,47 @@ export class IncidentService {
 
     return true;
   }
+
+  async getIncidentsByMainCategoryCode(mainCategoryCode: string): Promise<Incident[]> {
+    try {
+      // First, find all category items that belong to the main category
+      const categoryItems = await this.categoryItemRepository.find({
+        relations: ['subCategory', 'subCategory.mainCategory'],
+        where: {
+          subCategory: {
+            mainCategory: {
+              category_code: mainCategoryCode
+            }
+          }
+        }
+      });
+
+      if (categoryItems.length === 0) {
+        throw new NotFoundException(
+          `No category items found for main category code: ${mainCategoryCode}`
+        );
+      }
+
+      // Extract category item names for filtering incidents
+      const categoryItemNames = categoryItems.map(item => item.name);
+
+      // Find all incidents that match these category names
+      const incidents = await this.incidentRepository.find({
+        where: categoryItemNames.map(categoryName => ({ category: categoryName })),
+        order: { update_on: 'DESC' }
+      });
+
+      return incidents;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(
+        `Failed to retrieve incidents by main category code: ${message}`
+      );
+    }
+  }
+
 }
 
